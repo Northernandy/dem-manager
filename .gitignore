@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data files
+data/geo/*.tif
+data/raw/*
+data/processed/*
+!data/geo/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Flask
+instance/
+.webassets-cache
+app/static/dem/*.tif
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# OS specific
+.DS_Store
+Thumbs.db
