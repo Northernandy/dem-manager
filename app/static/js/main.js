@@ -149,6 +149,9 @@ function loadDEMLayer(url) {
         })
         .then(arrayBuffer => {
             parseGeoraster(arrayBuffer).then(georaster => {
+                // Log the georaster object to see all available metadata
+                console.log('GeoRaster metadata:', georaster);
+                
                 // Create a Leaflet layer with the georaster
                 const demRasterLayer = new GeoRasterLayer({
                     georaster: georaster,
@@ -156,18 +159,42 @@ function loadDEMLayer(url) {
                     resolution: 256,
                     pixelValuesToColorFn: values => {
                         const value = values[0]; // Get the first band value
-                        if (value === -9999 || value === 0 || value === null || value === undefined) {
+                        if (value === -9999 || value === null || value === undefined) {
                             return null; // No color for nodata values
                         }
                         
-                        // Color ramp for elevation
-                        // Lower elevations (blue) to higher elevations (brown)
-                        if (value < 0) return [0, 0, 255, 255]; // Deep water
-                        if (value < 5) return [0, 100, 255, 255]; // Shallow water
-                        if (value < 20) return [0, 255, 0, 255]; // Low elevation (green)
-                        if (value < 50) return [255, 255, 0, 255]; // Medium elevation (yellow)
-                        if (value < 100) return [255, 150, 0, 255]; // Higher elevation (orange)
-                        return [150, 75, 0, 255]; // Highest elevation (brown)
+                        // QGIS-like color ramp for elevation
+                        // Get min and max values from the georaster if available
+                        const min = georaster.mins ? georaster.mins[0] : 0;
+                        const max = georaster.maxs ? georaster.maxs[0] : 1000;
+                        const range = max - min;
+                        
+                        // Normalize the value to 0-1 range
+                        const normalized = Math.max(0, Math.min(1, (value - min) / range));
+                        
+                        // Apply a color ramp similar to QGIS elevation visualization
+                        // Blue (low) -> Green -> Yellow -> Red -> White (high)
+                        if (normalized < 0.2) {
+                            // Blue to Cyan (0-20%)
+                            const t = normalized / 0.2;
+                            return [0, Math.floor(255 * t), 255, 255];
+                        } else if (normalized < 0.4) {
+                            // Cyan to Green (20-40%)
+                            const t = (normalized - 0.2) / 0.2;
+                            return [0, 255, Math.floor(255 * (1 - t)), 255];
+                        } else if (normalized < 0.6) {
+                            // Green to Yellow (40-60%)
+                            const t = (normalized - 0.4) / 0.2;
+                            return [Math.floor(255 * t), 255, 0, 255];
+                        } else if (normalized < 0.8) {
+                            // Yellow to Red (60-80%)
+                            const t = (normalized - 0.6) / 0.2;
+                            return [255, Math.floor(255 * (1 - t)), 0, 255];
+                        } else {
+                            // Red to White (80-100%)
+                            const t = (normalized - 0.8) / 0.2;
+                            return [255, Math.floor(255 * t), Math.floor(255 * t), 255];
+                        }
                     }
                 });
                 
