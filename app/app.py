@@ -114,9 +114,13 @@ def fetch_dem_api():
         data = request.json
         dem_type = data.get('dem_type', 'lidar_5m')
         dem_name = data.get('dem_name', '')  # Get the DEM name from the request
-        
-        # Log the request
-        logger.info(f"DEM fetch request: type={dem_type}, name={dem_name}, data={data}")
+        data_type = data.get('dataType', 'rgb').lower() 
+
+        if data_type not in ['rgb', 'raw']:
+             logger.error(f"Invalid dataType requested: {data_type}. Must be 'rgb' or 'raw'.")
+             return jsonify({'success': False, 'message': "Invalid dataType requested. Must be 'rgb' or 'raw'."})
+
+        logger.info(f"DEM fetch request: type={dem_type}, name={dem_name}, dataType={data_type}, data={data}")
         
         # Get DEM type configuration
         dem_config = DEM_TYPES.get(dem_type)
@@ -138,20 +142,18 @@ def fetch_dem_api():
             logger.error(f"Invalid bounding box coordinates: {bbox}")
             return jsonify({'success': False, 'message': 'Invalid bounding box coordinates. Must be numeric values.'})
         
-        # Generate a unique filename based on the DEM type and bounding box
-        bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
-        base_output_file = f"{dem_type}_{bbox_str}.tif"
+        file_extension = '.png' if data_type == 'rgb' else '.tif'
         
-        # Check if the file already exists and generate a unique name if needed
+        bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
+        base_output_file = f"{dem_type}_{bbox_str}{file_extension}" 
+        
         output_file = base_output_file
         output_path = os.path.join(DEM_DIR, output_file)
         
-        # If the file already exists, append a number to make it unique
         if os.path.exists(output_path):
-            # Instead of returning the existing file, create a new one with a number appended
             counter = 1
             while True:
-                output_file = f"{dem_type}_{bbox_str}_{counter}.tif"
+                output_file = f"{dem_type}_{bbox_str}_{counter}{file_extension}" 
                 output_path = os.path.join(DEM_DIR, output_file)
                 if not os.path.exists(output_path):
                     break
@@ -159,15 +161,11 @@ def fetch_dem_api():
             
             logger.info(f"Generated unique filename for new DEM: {output_file}")
         
-        # Create a status file to track progress
         status_file = os.path.join(DEM_DIR, f"{os.path.splitext(output_file)[0]}_status.json")
         
-        # Ensure the directory exists
         os.makedirs(os.path.dirname(status_file), exist_ok=True)
         
-        # Initialize status file with explicit permissions
         try:
-            # Format initial display name to include DEM type if user provided a name
             display_name = dem_name
             if dem_name:
                 display_name = f"{dem_name} ({dem_config['name']})"
@@ -180,10 +178,10 @@ def fetch_dem_api():
                     'progress': 0,
                     'message': 'Initializing DEM download...',
                     'timestamp': time.time(),
-                    'display_name': display_name  # Store the formatted display name in the status file
+                    'display_name': display_name,
+                    'dataType': data_type  
                 }, f)
             
-            # Verify the status file was created
             if not os.path.exists(status_file):
                 logger.error(f"Failed to create status file: {status_file}")
                 return jsonify({'success': False, 'message': 'Failed to create status file', 'status': 'error'})
@@ -193,142 +191,94 @@ def fetch_dem_api():
             logger.exception(f"Error creating status file: {e}")
             return jsonify({'success': False, 'message': f'Error creating status file: {str(e)}', 'status': 'error'})
         
-        logger.info(f"Starting DEM fetch: type={dem_type}, name={dem_name}, bbox={bbox}, output={output_file}")
+        logger.info(f"Starting DEM fetch: type={dem_type}, name={dem_name}, dataType={data_type}, bbox={bbox}, output={output_file}")
         
-        # Fetch the DEM in a separate thread to avoid blocking
         import threading
         
         def fetch_dem_thread():
             try:
-                # Update status to downloading
                 with open(status_file, 'r') as f:
                     status_data = json.load(f)
                 
-                # Preserve the display_name from the original status file
                 display_name = status_data.get('display_name', '')
-                
+                thread_data_type = status_data.get('dataType', data_type) 
+
                 with open(status_file, 'w') as f:
                     json.dump({
                         'status': 'downloading',
                         'progress': 5,
                         'message': 'Starting DEM download...',
                         'timestamp': time.time(),
-                        'display_name': display_name  # Preserve the display name
+                        'display_name': display_name,
+                        'dataType': thread_data_type 
                     }, f)
                 
-                logger.info(f"Updated status file to downloading: {status_file}")
+                logger.info(f"Thread starting fetch for {output_file} with dataType={thread_data_type}")
                 
-                success = fetch_dem(
-                    bbox=bbox,
-                    target_res_meters=dem_config['resolution'],
-                    output_dir=DEM_DIR,
-                    output_file=output_path,
-                    rest_url=dem_config['url'],
-                    status_file=status_file
+                fetch_dem(
+                    dem_url=dem_config['url'], 
+                    bbox=bbox, 
+                    output_path=output_path, 
+                    status_file=status_file,
+                    data_type=thread_data_type 
                 )
                 
-                if success:
-                    # Create metadata with the DEM name if provided
-                    if dem_name:
-                        # Create metadata directory if it doesn't exist
-                        metadata_dir = os.path.join(DEM_DIR, 'metadata')
-                        os.makedirs(metadata_dir, exist_ok=True)
-                        
-                        # Create metadata file
-                        metadata_file = os.path.join(metadata_dir, f"{output_file}.json")
-                        
-                        # Format initial display name to include DEM type if user provided a name
-                        display_name = dem_name
-                        if dem_name:
-                            display_name = f"{dem_name} ({dem_config['name']})"
-                        else:
-                            display_name = dem_config['name']
-                        
-                        with open(metadata_file, 'w') as f:
-                            json.dump({
-                                'display_name': display_name,
-                                'created_at': time.time(),
-                                'dem_type': dem_type,
-                                'bbox': bbox,
-                                'resolution': dem_config['resolution']
-                            }, f)
-                        
-                        logger.info(f"Created metadata for DEM: {output_file} with name: {display_name}")
-                else:
-                    # Update status file with failure if fetch_dem returns False
-                    with open(status_file, 'w') as f:
-                        json.dump({
-                            'status': 'failed',
-                            'progress': 0,
-                            'message': 'Failed to fetch DEM. Check logs for details.',
-                            'timestamp': time.time()
-                        }, f)
-                    logger.error(f"DEM fetch failed for {output_file}")
+                logger.info(f"fetch_dem completed for {output_file}")
+
             except Exception as e:
-                # Handle any exceptions in the thread
-                logger.exception(f"Exception in DEM fetch thread: {e}")
+                logger.exception(f"Error in fetch_dem_thread for {output_file}: {e}")
                 try:
+                    with open(status_file, 'r') as f:
+                         status_data = json.load(f)
+                    display_name = status_data.get('display_name', '')
+                    thread_data_type = status_data.get('dataType', data_type)
+
                     with open(status_file, 'w') as f:
-                        json.dump({
-                            'status': 'failed',
-                            'progress': 0,
-                            'message': f'Error fetching DEM: {str(e)}',
-                            'timestamp': time.time()
-                        }, f)
-                except Exception as write_error:
-                    logger.error(f"Failed to write error to status file: {write_error}")
-        
-        # Start the fetch in a background thread
+                         json.dump({
+                             'status': 'error', 
+                             'progress': 100, 
+                             'message': f'Error fetching DEM: {str(e)}',
+                             'timestamp': time.time(),
+                             'display_name': display_name,
+                             'dataType': thread_data_type
+                         }, f)
+                except Exception as se:
+                    logger.error(f"Failed to update status file after thread error for {output_file}: {se}")
+
         thread = threading.Thread(target=fetch_dem_thread)
-        thread.daemon = True
         thread.start()
         
-        # Return immediately with the status file info
-        return jsonify({
-            'success': True,
-            'message': 'DEM fetch started',
-            'file': output_file,
-            'resolution': dem_config['resolution'],
-            'coverage': f"{bbox[0]},{bbox[1]} to {bbox[2]},{bbox[3]}",
-            'status': 'starting',
-            'display_name': dem_name
-        })
-            
+        logger.info(f"Started background thread for {output_file}")
+        
+        return jsonify({'success': True, 'filename': output_file, 'status': 'starting'})
+
     except Exception as e:
-        logger.exception(f"Error in fetch_dem_api: {e}")
-        return jsonify({'success': False, 'message': str(e), 'status': 'error'})
+        logger.exception("Error in fetch_dem_api")
+        return jsonify({'success': False, 'message': f'An unexpected error occurred: {str(e)}', 'status': 'error'})
 
 @app.route('/api/delete-dem/<filename>', methods=['POST'])
 def delete_dem(filename):
     """Delete a DEM file."""
     try:
-        # Secure the filename to prevent directory traversal
         filename = secure_filename(filename)
         file_path = os.path.join(DEM_DIR, filename)
         
-        # Check if the file exists
         if os.path.exists(file_path):
             try:
-                # Try to delete the file
                 os.remove(file_path)
             except PermissionError as e:
-                # If file is in use, try to force close it (Windows-specific)
                 logger.info(f"File {filename} is in use, attempting to force close...")
                 
-                # Force garbage collection to release file handles
                 gc.collect()
                 
-                # Try again after a short delay
                 time.sleep(0.5)
                 
                 try:
                     os.remove(file_path)
                 except Exception as inner_e:
-                    # If still can't delete, try using Windows-specific solution
-                    if os.name == 'nt':  # Windows
+                    if os.name == 'nt':  
                         try:
                             import subprocess
-                            # Use del command with force option
                             subprocess.run(['cmd', '/c', f'del /F "{file_path}"'], 
                                           shell=True, check=True, 
                                           stderr=subprocess.PIPE, 
@@ -344,7 +294,6 @@ def delete_dem(filename):
                                 'message': f'File is in use by another process. Please close any applications using this DEM and try again. Error: {str(e)}'
                             })
             
-            # Also delete status file if it exists
             status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
             if os.path.exists(status_file):
                 try:
@@ -352,7 +301,6 @@ def delete_dem(filename):
                 except Exception:
                     logger.warning(f"Could not delete status file: {status_file}")
             
-            # Also delete metadata file if it exists
             metadata_dir = os.path.join(DEM_DIR, 'metadata')
             metadata_file = os.path.join(metadata_dir, f"{filename}.json")
             if os.path.exists(metadata_file):
@@ -372,7 +320,6 @@ def delete_dem(filename):
 def check_dem_status(filename):
     """Check the status of a DEM download."""
     try:
-        # Secure the filename to prevent directory traversal
         filename = secure_filename(filename)
         status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
         
@@ -383,23 +330,19 @@ def check_dem_status(filename):
                 with open(status_file, 'r') as f:
                     status_data = json.load(f)
                 
-                # Log the status check
                 logger.info(f"DEM status check for {filename}: {status_data['status']} - {status_data['progress']}% - {status_data['message']}")
                 
-                # Add additional information if available
                 if os.path.exists(os.path.join(DEM_DIR, filename)):
                     dem_file_path = os.path.join(DEM_DIR, filename)
                     file_size_bytes = os.path.getsize(dem_file_path)
                     file_size_mb = file_size_bytes / (1024 * 1024)
                     
-                    # Add file size information to the status
                     status_data['file_size'] = {
                         'bytes': file_size_bytes,
                         'mb': round(file_size_mb, 2),
                         'formatted': f"{file_size_mb:.2f} MB"
                     }
                     
-                    # If the file exists but status is still in progress, it might be the final processing
                     if status_data['status'] not in ['complete', 'failed']:
                         status_data['message'] += f" (Current file size: {file_size_mb:.2f} MB)"
                 
@@ -408,10 +351,8 @@ def check_dem_status(filename):
                 logger.error(f"Error parsing status file for {filename}: {e}")
                 return jsonify({'success': False, 'message': f'Error reading status file: {e}', 'status': 'error'})
         else:
-            # Check if the actual DEM file exists
             dem_file = os.path.join(DEM_DIR, filename)
             if os.path.exists(dem_file):
-                # Get file size information
                 file_size_bytes = os.path.getsize(dem_file)
                 file_size_mb = file_size_bytes / (1024 * 1024)
                 
@@ -450,11 +391,9 @@ def rename_dem():
         if not filename or not new_display_name:
             return jsonify({'success': False, 'message': 'Missing filename or display name'})
         
-        # Create metadata directory if it doesn't exist
         metadata_dir = os.path.join(DEM_DIR, 'metadata')
         os.makedirs(metadata_dir, exist_ok=True)
         
-        # Create or update metadata file
         metadata_file = os.path.join(metadata_dir, f"{filename}.json")
         
         metadata = {}
@@ -462,7 +401,6 @@ def rename_dem():
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
         
-        # Simply update the display name without appending any additional information
         metadata['display_name'] = new_display_name
         
         with open(metadata_file, 'w') as f:
@@ -485,57 +423,46 @@ def log_client_message():
     try:
         log_data = request.json
         
-        # Validate log data
         if not log_data or not isinstance(log_data, dict):
             return jsonify({'success': False, 'message': 'Invalid log data'})
         
-        # Extract log information
         level = log_data.get('level', 'info').upper()
         message = log_data.get('message', 'No message provided')
         data = log_data.get('data')
         
-        # Format the log message
         log_message = f"CLIENT LOG: {message}"
         if data:
-            # Convert data to string if it's not already
             if isinstance(data, dict) or isinstance(data, list):
                 data_str = json.dumps(data)
             else:
                 data_str = str(data)
             log_message += f" | Data: {data_str}"
         
-        # Log with appropriate level
         if level == 'ERROR':
             logger.error(log_message)
         elif level == 'WARNING':
             logger.warning(log_message)
         elif level == 'DEBUG':
             logger.debug(log_message)
-        else:  # Default to INFO
+        else:  
             logger.info(log_message)
         
-        # Also save to client logs file
         client_log_file = os.path.join(log_dir, 'client_logs.json')
         
-        # Load existing logs or create new log array
         client_logs = []
         if os.path.exists(client_log_file):
             try:
                 with open(client_log_file, 'r') as f:
                     client_logs = json.load(f)
             except json.JSONDecodeError:
-                # File exists but is not valid JSON, start fresh
                 client_logs = []
         
-        # Add new log entry with server timestamp
         log_data['server_timestamp'] = time.time()
         client_logs.append(log_data)
         
-        # Keep only the last 1000 logs
         if len(client_logs) > 1000:
             client_logs = client_logs[-1000:]
         
-        # Write back to file
         with open(client_log_file, 'w') as f:
             json.dump(client_logs, f)
         
@@ -548,7 +475,6 @@ def log_client_message():
 def get_logs():
     """Get client logs."""
     try:
-        # Check if user is authorized (you might want to add proper authentication)
         client_log_file = os.path.join(log_dir, 'client_logs.json')
         
         if not os.path.exists(client_log_file):
@@ -557,7 +483,6 @@ def get_logs():
         with open(client_log_file, 'r') as f:
             logs = json.load(f)
         
-        # Return the most recent logs first
         logs.reverse()
         
         return jsonify({'success': True, 'logs': logs})
@@ -572,7 +497,6 @@ def get_system_info():
         import platform
         import psutil
         
-        # Get basic system info
         system_info = {
             'platform': platform.platform(),
             'python_version': platform.python_version(),
@@ -590,7 +514,6 @@ def get_system_info():
             }
         }
         
-        # Get open files in the DEM directory
         open_files = []
         try:
             for proc in psutil.process_iter(['pid', 'name', 'open_files']):
@@ -615,14 +538,12 @@ def get_system_info():
 def check_file_locks(filename):
     """Check what processes are locking a specific file."""
     try:
-        # Secure the filename to prevent directory traversal
         filename = secure_filename(filename)
         file_path = os.path.join(DEM_DIR, filename)
         
         if not os.path.exists(file_path):
             return jsonify({'success': False, 'message': f'File {filename} not found'})
         
-        # Get information about processes that might be locking the file
         import psutil
         import platform
         
@@ -635,13 +556,11 @@ def check_file_locks(filename):
             'system': platform.system()
         }
         
-        # Try to find processes that have this file open
         for proc in psutil.process_iter(['pid', 'name', 'username', 'cmdline', 'open_files']):
             try:
                 proc_info = proc.info
                 open_files = proc_info.get('open_files', [])
                 
-                # Check if any of the open files match our target
                 if open_files:
                     for open_file in open_files:
                         if open_file and hasattr(open_file, 'path') and file_path.lower() in open_file.path.lower():
@@ -655,14 +574,12 @@ def check_file_locks(filename):
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
         
-        # If on Windows, try using handle.exe if available (Sysinternals)
         if platform.system() == 'Windows':
             try:
                 import subprocess
                 handle_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'handle.exe')
                 
                 if os.path.exists(handle_path):
-                    # Run handle.exe to find processes with handles to this file
                     cmd = [handle_path, file_path, '/accepteula']
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
                     
@@ -675,10 +592,8 @@ def check_file_locks(filename):
             except Exception as e:
                 locks_info['handle_error'] = str(e)
         
-        # Try to open the file to see if it's actually locked
         try:
             with open(file_path, 'rb') as f:
-                # Read a small part of the file
                 f.read(1)
             locks_info['can_open'] = True
         except Exception as e:
@@ -703,7 +618,6 @@ def get_app_logs():
         if os.path.exists(log_file):
             with open(log_file, 'r') as f:
                 logs = f.readlines()
-            # Return the most recent logs first (up to 1000 lines)
             logs = logs[-1000:]
             return jsonify({'success': True, 'logs': logs})
         else:
@@ -721,11 +635,9 @@ def get_dem_logs():
             with open(log_file, 'r') as f:
                 all_logs = f.readlines()
             
-            # Filter for DEM-related logs
             dem_logs = [log for log in all_logs if any(term in log.lower() for term in 
                        ['dem', 'fetch', 'download', 'chunk', 'geotiff', 'export', 'service'])]
             
-            # Return the most recent logs first (up to 1000 lines)
             dem_logs = dem_logs[-1000:]
             return jsonify({'success': True, 'logs': dem_logs})
         else:
@@ -738,34 +650,27 @@ def get_available_dems():
     """Get a list of available DEM files with metadata."""
     dems = []
     
-    # Create metadata directory if it doesn't exist
     metadata_dir = os.path.join(DEM_DIR, 'metadata')
     os.makedirs(metadata_dir, exist_ok=True)
     
-    # Find all GeoTIFF files in the DEM directory
     for i, tif_file in enumerate(glob.glob(os.path.join(DEM_DIR, '*.tif'))):
         try:
-            # Extract filename
             filename = os.path.basename(tif_file)
             
-            # Calculate file size in MB
             size_bytes = os.path.getsize(tif_file)
             size_mb = size_bytes / (1024 * 1024)
             
-            # Try to determine the DEM type from the filename
             dem_type = None
             for key, config in DEM_TYPES.items():
                 if key in filename:
                     dem_type = key
                     break
             
-            # If we couldn't determine the type, use a generic description
             if dem_type:
                 resolution = DEM_TYPES[dem_type]['resolution']
                 description = DEM_TYPES[dem_type]['description']
                 type_name = DEM_TYPES[dem_type]['name']
             else:
-                # Try to extract resolution from filename
                 if '5m' in filename or 'lidar' in filename.lower():
                     resolution = 5
                     type_name = '5m LiDAR DEM'
@@ -781,13 +686,11 @@ def get_available_dems():
                 
                 description = 'Custom Digital Elevation Model'
             
-            # Try to extract coverage from filename
             coverage = 'Brisbane Area'
             if '_' in filename:
                 parts = filename.split('_')
-                if len(parts) >= 5:  # Assuming format like dem_type_minx_miny_maxx_maxy.tif
+                if len(parts) >= 5:  
                     try:
-                        # Convert from filename format (p instead of .)
                         minx = float(parts[-4].replace('p', '.'))
                         miny = float(parts[-3].replace('p', '.'))
                         maxx = float(parts[-2].replace('p', '.'))
@@ -796,9 +699,8 @@ def get_available_dems():
                     except (ValueError, IndexError):
                         pass
             
-            # Load display name from metadata if available
-            metadata_file = os.path.join(metadata_dir, f"{filename}.json")
             user_name = ""
+            metadata_file = os.path.join(metadata_dir, f"{filename}.json")
             if os.path.exists(metadata_file):
                 try:
                     with open(metadata_file, 'r') as f:
@@ -807,7 +709,6 @@ def get_available_dems():
                 except Exception as e:
                     logger.error(f"Error reading metadata for {filename}: {e}")
             
-            # Use the user-provided display name exactly as stored, or fall back to type_name if none exists
             display_name = user_name if user_name else type_name
             
             dems.append({
@@ -825,7 +726,6 @@ def get_available_dems():
         except Exception as e:
             logger.exception(f"Error processing DEM file {tif_file}")
     
-    # Sort DEMs by size (largest first)
     dems.sort(key=lambda x: x.get('size_bytes', 0), reverse=True)
     
     return dems

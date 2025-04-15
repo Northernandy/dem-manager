@@ -34,7 +34,8 @@ class DEMFetcher:
                  output_dir=None,
                  output_file=None,
                  rest_url=None,
-                 status_file=None):
+                 status_file=None,
+                 data_type='rgb'):
         """
         Initialize the DEM fetcher with configuration parameters.
         
@@ -45,6 +46,7 @@ class DEMFetcher:
             output_file (str): Name of the output GeoTIFF file
             rest_url (str): URL of the REST service to use (overrides default)
             status_file (str): Path to a file to write status updates
+            data_type (str): Type of data to fetch ('rgb' or 'raw'). Default is 'rgb'.
         """
         # Bounding box
         self.bbox = bbox
@@ -104,11 +106,12 @@ class DEMFetcher:
         # Export parameters
         self.export_params = {
             'transparent': 'true',
-            'format': 'tiff',
             'f': 'image',
-            'pixelType': 'F32',  # Use 32-bit floating point for better elevation precision
             'noDataInterpretation': 'esriNoDataMatchAny'
         }
+        
+        # Data type
+        self.data_type = data_type
 
     def create_temp_dir(self):
         """Create temporary directory for DEM chunks"""
@@ -161,33 +164,56 @@ class DEMFetcher:
         """
         export_url = f"{url}/export"
         
+        # Determine format, pixelType, and file extension based on data_type
+        if self.data_type == 'raw':
+            export_format = 'tiff'
+            export_pixel_type = 'F32'
+            output_extension = '.tif'
+            expected_content_type = 'tiff'
+        elif self.data_type == 'rgb':
+            export_format = 'png8' # Use 8-bit PNG for RGB
+            export_pixel_type = 'U8'
+            output_extension = '.png'
+            expected_content_type = 'png'
+        else:
+            # Default or error case - fall back to raw for now, but log error
+            logger.error(f"Unsupported data_type '{self.data_type}' in export_image_chunk. Defaulting to raw.")
+            export_format = 'tiff'
+            export_pixel_type = 'F32'
+            output_extension = '.tif'
+            expected_content_type = 'tiff'
+            
         params = {
             'bbox': ','.join(map(str, bbox)),
             'bboxSR': 4326,  # WGS84
             'imageSR': 4326,
             'size': f"{width},{height}",
-            **self.export_params
+            # Add dynamic format and pixelType
+            'format': export_format, 
+            'pixelType': export_pixel_type, 
+            **self.export_params # Keep other default export params like noDataInterpretation
         }
         
-        logger.info(f"Exporting chunk {chunk_id} with bbox {bbox}")
+        logger.info(f"Exporting chunk {chunk_id} ({self.data_type}) with bbox {bbox}") 
         logger.info(f"Request size: {width}x{height} pixels")
         logger.info(f"Request URL: {export_url}")
         logger.info(f"Request params: {params}")
         
         for attempt in range(self.max_retries):
             try:
-                logger.info(f"Attempt {attempt+1}/{self.max_retries} to export chunk {chunk_id}")
+                logger.info(f"Attempt {attempt+1}/{self.max_retries} to export chunk {chunk_id} ({self.data_type})") 
                 response = requests.get(export_url, params=params, timeout=300, stream=True)
                 
                 if response.status_code == 200:
-                    # Check content type to ensure we got a TIFF
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'tiff' not in content_type.lower() and 'image' not in content_type.lower():
-                        logger.warning(f"Unexpected content type: {content_type}")
+                    # Check content type based on expected format
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    if expected_content_type not in content_type and 'image' not in content_type:
+                        # Log warning but continue, sometimes content-type is generic 'image/...' or incorrect
+                        logger.warning(f"Unexpected content type for {self.data_type} request: {content_type} (expected similar to '{expected_content_type}')")
                         logger.warning(f"Response headers: {dict(response.headers)}")
-                        # Continue anyway as sometimes the content type is not set correctly
                     
-                    output_file = os.path.join(self.temp_dir, f"chunk_{chunk_id}.tif")
+                    # Use dynamic file extension
+                    output_file = os.path.join(self.temp_dir, f"chunk_{chunk_id}{output_extension}") 
                     
                     # Save the response to a file
                     with open(output_file, 'wb') as f:
@@ -196,23 +222,37 @@ class DEMFetcher:
                     
                     # Check if the file is valid
                     file_size = os.path.getsize(output_file)
-                    if file_size < 1000:  # If file is too small, it's probably an error
-                        logger.warning(f"Chunk file is suspiciously small: {file_size} bytes")
-                        with open(output_file, 'rb') as f:
-                            content = f.read(1000)
-                        logger.warning(f"File content preview: {content[:100]}")
-                        
-                        # If it's clearly an error message, not a TIFF
-                        if b'error' in content.lower() or b'exception' in content.lower():
-                            logger.error(f"Response contains error message: {content}")
-                            if attempt < self.max_retries - 1:
-                                logger.info(f"Retrying in {2 ** attempt} seconds...")
-                                time.sleep(2 ** attempt)
-                                continue
-                            return None
-                    
-                    logger.info(f"Saved chunk {chunk_id} to {output_file} ({file_size} bytes)")
-                    return output_file
+                    # Adjust minimum size check slightly for potentially smaller PNGs
+                    min_expected_size = 500 if self.data_type == 'rgb' else 1000 
+                    if file_size < min_expected_size:  
+                        logger.warning(f"Chunk file {output_file} is suspiciously small: {file_size} bytes (expected > {min_expected_size})")
+                        try: # Try reading as text first for error messages
+                            with open(output_file, 'r', errors='ignore') as f:
+                                content_preview = f.read(500)
+                            logger.warning(f"File text content preview: {content_preview}")
+                            if 'error' in content_preview.lower() or 'exception' in content_preview.lower() or 'failed' in content_preview.lower():
+                               logger.error(f"Response appears to contain an error message.")
+                               # If error found, trigger retry/failure logic
+                               if attempt < self.max_retries - 1:
+                                   logger.info(f"Retrying due to error content in {attempt+1}/{self.max_retries}...")
+                                   time.sleep(2 ** attempt)
+                                   continue # Go to next attempt
+                               else:
+                                   logger.error(f"Failed after {self.max_retries} attempts due to error content in response.")
+                                   return None # Failed all retries
+                        except Exception: 
+                             # If reading as text fails, it might be binary - log binary preview
+                             with open(output_file, 'rb') as f:
+                                 content_preview = f.read(100)
+                             logger.warning(f"File binary content preview: {content_preview}")
+                             # Cannot reliably detect errors in binary preview, proceed with caution
+                             # Maybe add check here to retry if file size is extremely small (e.g. <100 bytes)?
+    
+                        # If it passed the error content check but is still small, maybe log and continue?
+                        logger.warning(f"File {output_file} is small but does not appear to be a text error. Proceeding cautiously.")
+    
+                    logger.info(f"Saved chunk {chunk_id} ({self.data_type}) to {output_file} ({file_size} bytes)") 
+                    return output_file # Success for this attempt
                 else:
                     logger.warning(f"Attempt {attempt+1}/{self.max_retries} failed: {response.status_code}")
                     if response.text:
@@ -223,8 +263,16 @@ class DEMFetcher:
                         retry_delay = 2 ** attempt
                         logger.info(f"Retrying in {retry_delay} seconds...")
                         time.sleep(retry_delay)  # Exponential backoff
+            except requests.exceptions.Timeout:
+                 logger.error(f"Attempt {attempt+1}/{self.max_retries} timed out for chunk {chunk_id} ({self.data_type})")
+                 if attempt < self.max_retries - 1:
+                     time.sleep(2 ** (attempt + 1)) # Longer backoff after timeout
+                     continue
+                 else:
+                     logger.error(f"Failed chunk {chunk_id} due to timeout after {self.max_retries} attempts.")
+                     return None
             except Exception as e:
-                logger.error(f"Attempt {attempt+1}/{self.max_retries} error: {str(e)}")
+                logger.exception(f"Attempt {attempt+1}/{self.max_retries} error exporting chunk {chunk_id} ({self.data_type}): {e}") # Log data type and exception
                 
                 # Wait before retrying
                 if attempt < self.max_retries - 1:
@@ -232,7 +280,7 @@ class DEMFetcher:
                     logger.info(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)  # Exponential backoff
         
-        logger.error(f"Failed to export chunk {chunk_id} after {self.max_retries} attempts")
+        logger.error(f"Failed to export chunk {chunk_id} ({self.data_type}) after {self.max_retries} attempts") 
         return None
 
     def add_georeference_to_chunk(self, file_path, bbox):
@@ -405,6 +453,7 @@ class DEMFetcher:
         logger.info(f"  - Target resolution: {self.target_res_meters}m")
         logger.info(f"  - Output file: {self.output_file}")
         logger.info(f"  - REST URL: {self.rest_url}")
+        logger.info(f"  - Data type: {self.data_type}")
         
         # Check if the service is available
         try:
@@ -430,7 +479,7 @@ class DEMFetcher:
         # If the request is small enough, just do one request
         if self.split_requests == 1:
             logger.info("Single request mode - exporting full area as one chunk")
-            self.update_status('downloading', 10, 'Downloading DEM data as a single chunk...')
+            self.update_status('downloading', 10, f'Downloading {self.data_type.upper()} data as a single chunk...')
             
             chunk_file = self.export_image_chunk(self.rest_url, self.bbox, self.chunk_width, self.chunk_height, "full")
             
@@ -440,32 +489,79 @@ class DEMFetcher:
                 file_size_mb = file_size_bytes / (1024 * 1024)
                 logger.info(f"Downloaded chunk file size: {file_size_mb:.2f} MB ({file_size_bytes} bytes)")
                 
-                # Add georeference
-                self.update_status('processing', 50, f'Adding georeference information to {file_size_mb:.2f} MB chunk...')
-                georef_file = self.add_georeference_to_chunk(chunk_file, self.bbox)
-                
-                if georef_file:
-                    # Log georeferenced file size
-                    georef_size_bytes = os.path.getsize(georef_file)
-                    georef_size_mb = georef_size_bytes / (1024 * 1024)
-                    logger.info(f"Georeferenced file size: {georef_size_mb:.2f} MB ({georef_size_bytes} bytes)")
-                    
-                    # Copy to output file
-                    self.update_status('processing', 80, f'Finalizing DEM file ({georef_size_mb:.2f} MB)...')
-                    if os.path.exists(georef_file):
+                # <<< MODIFIED: Handle RGB vs RAW >>>
+                if self.data_type == 'rgb':
+                    # For RGB, just copy the downloaded PNG chunk directly to the output
+                    logger.info(f"RGB mode: Copying downloaded chunk {chunk_file} directly to {self.output_file}")
+                    self.update_status('processing', 80, f'Saving RGB image ({file_size_mb:.2f} MB)...')
+                    try:
                         import shutil
-                        shutil.copy2(georef_file, self.output_file)
-                        logger.info(f"Copied georeferenced file to {self.output_file}")
+                        shutil.copy2(chunk_file, self.output_file)
+                        final_size_bytes = os.path.getsize(self.output_file)
+                        final_size_mb = final_size_bytes / (1024 * 1024)
+                        success_msg = f'RGB image download complete: {final_size_mb:.2f} MB file created'
+                        logger.info(success_msg)
+                        self.update_status('complete', 100, success_msg)
+                        return True
+                    except Exception as e:
+                        error_msg = f"Error copying RGB chunk to output: {e}"
+                        logger.exception(error_msg)
+                        self.update_status('failed', 90, error_msg)
+                        return False
+            
+                elif self.data_type == 'raw':
+                    # For RAW, proceed with georeferencing and verification
+                    logger.info("RAW mode: Proceeding with georeferencing...")
+                    self.update_status('processing', 50, f'Adding georeference information to {file_size_mb:.2f} MB chunk...')
+                    georef_file = self.add_georeference_to_chunk(chunk_file, self.bbox)
+                    
+                    if georef_file:
+                        # Log georeferenced file size
+                        georef_size_bytes = os.path.getsize(georef_file)
+                        georef_size_mb = georef_size_bytes / (1024 * 1024)
+                        logger.info(f"Georeferenced file size: {georef_size_mb:.2f} MB ({georef_size_bytes} bytes)")
                         
-                        # Verify the result
-                        self.update_status('processing', 90, 'Verifying DEM file...')
-                        if self.verify_geotiff(self.output_file):
-                            final_size_bytes = os.path.getsize(self.output_file)
-                            final_size_mb = final_size_bytes / (1024 * 1024)
-                            success_msg = f'DEM download complete: {final_size_mb:.2f} MB file created'
-                            logger.info(success_msg)
-                            self.update_status('complete', 100, success_msg)
-                            return True
+                        # Copy to output file
+                        self.update_status('processing', 80, f'Finalizing {self.data_type.upper()} DEM file ({georef_size_mb:.2f} MB)...')
+                        if os.path.exists(georef_file):
+                            import shutil
+                            shutil.copy2(georef_file, self.output_file)
+                            logger.info(f"Copied georeferenced file to {self.output_file}")
+                            
+                            # Verify the result
+                            self.update_status('processing', 90, 'Verifying DEM file...')
+                            if self.verify_geotiff(self.output_file):
+                                final_size_bytes = os.path.getsize(self.output_file)
+                                final_size_mb = final_size_bytes / (1024 * 1024)
+                                success_msg = f'{self.data_type.upper()} DEM download complete: {final_size_mb:.2f} MB file created'
+                                logger.info(success_msg)
+                                self.update_status('complete', 100, success_msg)
+                                return True
+                            else:
+                                error_msg = "Verification of final GeoTIFF failed."
+                                logger.error(error_msg)
+                                self.update_status('failed', 95, error_msg)
+                                return False
+                        else:
+                            error_msg = f"Georeferenced file {georef_file} not found after creation."
+                            logger.error(error_msg)
+                            self.update_status('failed', 85, error_msg)
+                            return False
+                    else:
+                        error_msg = "Failed to add georeference to the downloaded chunk."
+                        logger.error(error_msg)
+                        self.update_status('failed', 60, error_msg)
+                        return False
+                else:
+                     logger.error(f"Unsupported data_type '{self.data_type}' during single chunk processing.")
+                     self.update_status('failed', 50, f"Internal error: Unsupported data type {self.data_type}")
+                     return False
+            else: 
+                # Chunk download failed
+                error_msg = f"Failed to download the single chunk for {self.data_type.upper()} data."
+                logger.error(error_msg)
+                self.update_status('failed', 20, error_msg)
+                return False
         else:
             # Split into chunks
             logger.info(f"Splitting request into {self.split_requests}x{self.split_requests} chunks")
@@ -477,6 +573,7 @@ class DEMFetcher:
             total_chunks = self.split_requests * self.split_requests
             current_chunk = 0
             total_downloaded_bytes = 0
+            failed_chunks = 0
             
             for row in range(self.split_requests):
                 for col in range(self.split_requests):
@@ -485,71 +582,137 @@ class DEMFetcher:
                     chunk_bbox = self.get_chunk_bbox(row, col, self.split_requests, self.split_requests)
                     
                     # Update status with detailed chunk information
-                    chunk_info = f'Downloading chunk {current_chunk}/{total_chunks} (bbox: {chunk_bbox})'
-                    logger.info(chunk_info)
+                    chunk_info = f'Downloading chunk {current_chunk}/{total_chunks} ({self.data_type.upper()})'
+                    logger.info(chunk_info + f" (bbox: {chunk_bbox})")
                     progress = 5 + (current_chunk / total_chunks) * 45  # 5-50% progress during download
                     self.update_status('downloading', progress, chunk_info)
                     
-                    # Export this chunk
                     chunk_file = self.export_image_chunk(self.rest_url, chunk_bbox, self.chunk_width, self.chunk_height, chunk_id)
                     
                     if chunk_file:
-                        # Log chunk file size
-                        chunk_size_bytes = os.path.getsize(chunk_file)
-                        chunk_size_mb = chunk_size_bytes / (1024 * 1024)
-                        total_downloaded_bytes += chunk_size_bytes
-                        
-                        chunk_success_msg = f'Chunk {current_chunk}/{total_chunks} downloaded: {chunk_size_mb:.2f} MB'
-                        logger.info(chunk_success_msg)
-                        
                         chunk_files.append(chunk_file)
-                        
-                        # Add georeference
-                        georef_progress = 50 + (current_chunk / total_chunks) * 20  # 50-70% progress during georeferencing
-                        self.update_status('processing', georef_progress, f'Processing chunk {current_chunk}/{total_chunks} ({chunk_size_mb:.2f} MB)...')
-                        
-                        georef_file = self.add_georeference_to_chunk(chunk_file, chunk_bbox)
-                        
-                        if georef_file:
-                            # Log georeferenced chunk size
-                            georef_size_bytes = os.path.getsize(georef_file)
-                            georef_size_mb = georef_size_bytes / (1024 * 1024)
-                            logger.info(f'Chunk {current_chunk}/{total_chunks} georeferenced: {georef_size_mb:.2f} MB')
-                            
-                            georef_chunk_files.append(georef_file)
-        
-            # Log total downloaded data
-            total_downloaded_mb = total_downloaded_bytes / (1024 * 1024)
-            logger.info(f"Total downloaded data: {total_downloaded_mb:.2f} MB ({total_downloaded_bytes} bytes) across {len(chunk_files)} chunks")
-            
-            # Merge all georeferenced chunks
-            if len(georef_chunk_files) > 0:
-                merge_msg = f'Merging {len(georef_chunk_files)} chunks (total {total_downloaded_mb:.2f} MB)...'
-                logger.info(merge_msg)
-                self.update_status('processing', 75, merge_msg)
+                        # Log size of downloaded chunk
+                        chunk_size = os.path.getsize(chunk_file)
+                        total_downloaded_bytes += chunk_size
+                        logger.info(f"Chunk {current_chunk}/{total_chunks} downloaded: {chunk_file} ({chunk_size} bytes)")
+                    else:
+                        failed_chunks += 1
+                        logger.error(f"Failed to download chunk {current_chunk}/{total_chunks} (ID: {chunk_id})")
+                        # Decide whether to continue or fail fast (e.g., if too many chunks fail)
+                        if failed_chunks > total_chunks * 0.2: # Allow up to 20% failures
+                           error_msg = f"Too many chunk downloads failed ({failed_chunks}/{total_chunks}). Aborting."
+                           logger.error(error_msg)
+                           self.update_status('failed', progress, error_msg)
+                           return False
+                           
+            # Check if any chunks were successfully downloaded
+            if not chunk_files:
+                error_msg = "No chunks were successfully downloaded."
+                logger.error(error_msg)
+                self.update_status('failed', 50, error_msg)
+                return False
                 
-                if self.merge_geotiff_chunks(georef_chunk_files, self.output_file):
-                    # Get final file size
+            total_downloaded_mb = total_downloaded_bytes / (1024*1024)
+            logger.info(f"Total downloaded data across {len(chunk_files)} chunks: {total_downloaded_mb:.2f} MB")
+            if failed_chunks > 0:
+                logger.warning(f"{failed_chunks} chunks failed to download.")
+
+            # <<< MODIFIED: Handle RGB vs RAW for multiple chunks >>>
+            if self.data_type == 'rgb':
+                # For RGB, use the first successfully downloaded chunk as the output
+                first_chunk_file = chunk_files[0]
+                logger.info(f"RGB mode (multi-chunk): Using first downloaded chunk {first_chunk_file} as output {self.output_file}")
+                self.update_status('processing', 80, f'Saving first RGB image chunk...')
+                try:
+                    import shutil
+                    shutil.copy2(first_chunk_file, self.output_file)
+                    final_size_bytes = os.path.getsize(self.output_file)
+                    final_size_mb = final_size_bytes / (1024 * 1024)
+                    success_msg = f'RGB image download complete (using first chunk): {final_size_mb:.2f} MB file created'
+                    logger.info(success_msg)
+                    self.update_status('complete', 100, success_msg)
+                    return True
+                except Exception as e:
+                    error_msg = f"Error copying first RGB chunk to output: {e}"
+                    logger.exception(error_msg)
+                    self.update_status('failed', 90, error_msg)
+                    return False
+
+            elif self.data_type == 'raw':
+                # For RAW, proceed with georeferencing and merging
+                logger.info("RAW mode (multi-chunk): Proceeding with georeferencing chunks...")
+                self.update_status('processing', 50, f'Georeferencing {len(chunk_files)} downloaded chunks...')
+                
+                for i, chunk_file in enumerate(chunk_files):
+                    chunk_bbox = self.get_chunk_bbox(i // self.split_requests, i % self.split_requests, self.split_requests, self.split_requests)
+                    progress = 50 + ((i + 1) / len(chunk_files)) * 30 # 50-80% progress during georef
+                    self.update_status('processing', progress, f'Georeferencing chunk {i+1}/{len(chunk_files)}...')
+                    georef_file = self.add_georeference_to_chunk(chunk_file, chunk_bbox)
+                    if georef_file:
+                        georef_chunk_files.append(georef_file)
+                    else:
+                        logger.warning(f"Failed to georeference chunk: {chunk_file}")
+                        # Potentially handle failure here, e.g., skip this chunk in merge
+            
+                if not georef_chunk_files:
+                    error_msg = "Failed to georeference any downloaded chunks."
+                    logger.error(error_msg)
+                    self.update_status('failed', 80, error_msg)
+                    return False
+                
+                # Merge georeferenced chunks
+                logger.info(f"Merging {len(georef_chunk_files)} georeferenced chunks...")
+                merge_msg = f'Merging {len(georef_chunk_files)} georeferenced chunks...' 
+                if len(chunk_files) != len(georef_chunk_files):
+                     merge_msg += f' ({len(chunk_files) - len(georef_chunk_files)} failed georef)'
+                self.update_status('processing', 80, merge_msg)
+                
+                # Merge using rasterio
+                try:
+                    self.merge_chunks(georef_chunk_files, self.output_file)
+                except Exception as e:
+                    error_msg = f"Error merging chunks: {e}"
+                    logger.exception(error_msg)
+                    self.update_status('failed', 85, error_msg)
+                    return False
+                
+                if os.path.exists(self.output_file):
+                    # Log final size
                     final_size_bytes = os.path.getsize(self.output_file)
                     final_size_mb = final_size_bytes / (1024 * 1024)
                     logger.info(f"Merged file size: {final_size_mb:.2f} MB ({final_size_bytes} bytes)")
                     
                     # Verify the result
-                    verify_msg = f'Verifying merged DEM file ({final_size_mb:.2f} MB)...'
+                    verify_msg = f'Verifying merged {self.data_type.upper()} DEM file ({final_size_mb:.2f} MB)...'
                     logger.info(verify_msg)
                     self.update_status('processing', 90, verify_msg)
                     
                     if self.verify_geotiff(self.output_file):
-                        success_msg = f'DEM download complete: {final_size_mb:.2f} MB file created from {len(georef_chunk_files)} chunks'
+                        success_msg = f'{self.data_type.upper()} DEM download complete: {final_size_mb:.2f} MB file created from {len(georef_chunk_files)} chunks'
                         logger.info(success_msg)
                         self.update_status('complete', 100, success_msg)
                         return True
-    
-        logger.error("Failed to download high-resolution DEM")
-        self.update_status('failed', 0, 'Failed to download high-resolution DEM')
+                    else:
+                        error_msg = f"Verification of merged GeoTIFF ({self.output_file}) failed."
+                        logger.error(error_msg)
+                        self.update_status('failed', 95, error_msg)
+                        return False
+                else:
+                    error_msg = f"Merged output file {self.output_file} not found after merge operation."
+                    logger.error(error_msg)
+                    self.update_status('failed', 88, error_msg)
+                    return False
+            else:
+                logger.error(f"Unsupported data_type '{self.data_type}' during multi-chunk processing.")
+                self.update_status('failed', 50, f"Internal error: Unsupported data type {self.data_type}")
+                return False
+                
+        # Fallback if something went wrong before returning True
+        logger.error(f"Failed to download high-resolution {self.data_type.upper()} DEM")
+        self.update_status('failed', 0, f'Failed to download high-resolution {self.data_type.upper()} DEM')
         return False
 
-def fetch_dem(bbox=None, target_res_meters=5, output_dir=None, output_file=None, rest_url=None, status_file=None):
+def fetch_dem(bbox=None, target_res_meters=5, output_dir=None, output_file=None, rest_url=None, status_file=None, data_type='rgb'):
     """
     Convenience function to fetch DEM data.
     
@@ -560,6 +723,7 @@ def fetch_dem(bbox=None, target_res_meters=5, output_dir=None, output_file=None,
         output_file (str): Name of the output GeoTIFF file
         rest_url (str): URL of the REST service to use (overrides default)
         status_file (str): Path to a file to write status updates
+        data_type (str): Type of data to fetch ('rgb' or 'raw'). Default is 'rgb'.
         
     Returns:
         bool: True if successful, False otherwise
@@ -575,24 +739,26 @@ def fetch_dem(bbox=None, target_res_meters=5, output_dir=None, output_file=None,
         output_dir=output_dir,
         output_file=output_file,
         rest_url=rest_url,
-        status_file=status_file
+        status_file=status_file,
+        data_type=data_type
     )
     
     # Log parameters
-    logger.info(f"Starting high-resolution DEM download (target resolution: {target_res_meters}m)")
+    logger.info(f"Starting high-resolution DEM download (type: {data_type}, target resolution: {target_res_meters}m)")
     logger.info(f"Calculated required dimensions: {fetcher.required_width}x{fetcher.required_height} pixels")
     
     # Update initial status
     if status_file:
-        fetcher.update_status('starting', 0, 'Initializing DEM download...')
+        message = f"Initializing {data_type.upper()} DEM download..."
+        fetcher.update_status('starting', 0, message)
     
     # Download DEM
-    success = fetcher.download_high_res_dem()
+    success = fetcher.download_high_res_dem() 
     
     if success:
-        logger.info("High-resolution DEM download completed successfully")
+        logger.info(f"High-resolution {data_type.upper()} DEM download completed successfully")
     else:
-        logger.error("High-resolution DEM download failed")
+        logger.error(f"High-resolution {data_type.upper()} DEM download failed")
     
     return success
 

@@ -94,6 +94,24 @@
                                     </select>
                                     <div class="form-text">{{ dem_types[dem_types.keys()|list|first].description }}</div>
                                 </div>
+
+                                <!-- Data Type Selector -->
+                                <div class="mb-3">
+                                    <label class="form-label">Download Format:</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="downloadDataType" id="downloadDataTypeRaw" value="raw" checked>
+                                        <label class="form-check-label" for="downloadDataTypeRaw">
+                                            Raw DEM Data (.tif)
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="downloadDataType" id="downloadDataTypeRgb" value="rgb">
+                                        <label class="form-check-label" for="downloadDataTypeRgb">
+                                            RGB Image (.png)
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <div class="mb-3">
                                     <label class="form-label">DEM Name</label>
                                     <input type="text" class="form-control" id="dem-name" placeholder="Enter a descriptive name for this DEM">
@@ -451,6 +469,9 @@
             const maxX = parseFloat(document.getElementById('maxx').value);
             const maxY = parseFloat(document.getElementById('maxy').value);
             
+            // Get selected download data type
+            const selectedDataType = document.querySelector('input[name="downloadDataType"]:checked').value;
+
             // Validate inputs
             if (isNaN(minX) || isNaN(minY) || isNaN(maxX) || isNaN(maxY)) {
                 showAlert('Please enter valid coordinates for the bounding box.', 'alert-danger');
@@ -491,7 +512,8 @@
                 body: JSON.stringify({
                     dem_type: demType,
                     dem_name: demName,
-                    bbox: bbox
+                    bbox: bbox,
+                    dataType: selectedDataType
                 })
             })
             .then(response => response.json())

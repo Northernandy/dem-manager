@@ -6,84 +6,117 @@
     <title>Brisbane Flood Visualization</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Custom CSS with version parameter to prevent caching -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ now }}">
     <style>
-        body, html {
-            height: 100%;
+        /* Custom styles for the application */
+        body {
+            padding: 0;
             margin: 0;
-            padding: 0;
         }
-        .container-fluid {
-            height: calc(100vh - 40px);
-            padding: 0;
-        }
+        
         #map {
-            height: 100%;
+            height: calc(100vh - 40px);
             width: 100%;
         }
-        .control-panel {
-            position: absolute;
-            top: calc(20% + 60px);
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px;
-            border-radius: 0 0 5px 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-            max-width: 300px;
-            border-top: 1px solid #eee;
-        }
-        .info-panel {
-            position: absolute;
-            bottom: 20px;
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-            max-width: 300px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        .search-container {
-            position: absolute;
-            top: 20%;
-            right: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px;
-            border-radius: 5px 5px 0 0;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-            width: 300px;
-            border-bottom: none;
-        }
-        /* Add styles for a smaller navbar */
+        
         .navbar {
             padding-top: 0;
             padding-bottom: 0;
             min-height: 40px;
             height: 40px;
+            background-color: #333333 !important; /* Dark grey header */
         }
+        
         .navbar-brand {
             padding-top: 0;
             padding-bottom: 0;
-            font-size: 1rem;
+            font-size: 2.25rem; /* 50% larger than original 1.5rem */
+            color: white !important;
         }
+        
         .nav-link {
             padding-top: 0.25rem;
             padding-bottom: 0.25rem;
+            font-size: 0.9rem; /* Smaller menu items */
+            color: rgba(255, 255, 255, 0.85) !important; /* White text for menu items */
         }
-        /* Ensure Leaflet controls are visible */
-        .leaflet-top.leaflet-left {
-            top: 10px;
+        
+        .nav-link:hover {
+            color: white !important;
+        }
+        
+        /* Center the search container at the top */
+        .search-container {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 300px;
+            margin-bottom: 0;
+        }
+        
+        /* Search button styling - small icon button */
+        #search-btn {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            color: white;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        
+        #search-btn:hover {
+            background-color: #0b5ed7;
+            border-color: #0b5ed7;
+        }
+        
+        #address-search {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            border-right: none;
+        }
+        
+        /* Position control panel on the left, but lower down */
+        .control-panel {
+            position: absolute;
+            top: 120px; /* Lower position to avoid zoom controls */
             left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 300px;
         }
-        .leaflet-control-layers {
-            clear: both;
+        
+        /* Info Panel - positioned at bottom right */
+        .info-panel {
+            position: absolute;
+            bottom: 50px; /* 20px higher than before */
+            right: 20px; /* 10px more to the left */
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 300px;
+            max-height: 200px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -114,9 +147,9 @@
         <!-- Search Container -->
         <div class="search-container">
             <div class="input-group">
-                <input type="text" id="address-search" class="form-control" placeholder="Search for an address...">
-                <button class="btn btn-primary" type="button" id="search-btn">
-                    <i class="bi bi-search"></i> Search
+                <input type="text" class="form-control" id="address-search" placeholder="Search for an address...">
+                <button class="btn" id="search-btn" type="button">
+                    <i class="bi bi-search"></i>
                 </button>
             </div>
         </div>
@@ -154,11 +187,6 @@
             <div class="d-grid">
                 <button class="btn btn-sm btn-primary" id="update-map">Update Map</button>
             </div>
-            
-            <!-- Settings Link -->
-            <div class="mt-2 text-center">
-                <a href="/settings" class="btn btn-sm btn-outline-secondary">Manage DEM Settings</a>
-            </div>
         </div>
         
         <!-- Info Panel -->
@@ -179,7 +207,7 @@
     </footer>
 
     <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- GeoRaster for GeoTIFF support -->
     <script src="https://unpkg.com/georaster"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>

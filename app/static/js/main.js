@@ -37,7 +37,6 @@ const wivenhoeDam = L.marker([-27.3919, 152.6085])
 
 // Create an overlay layers object
 const overlayMaps = {
-    "DEM Layer": demLayer,
     "Wivenhoe Dam": wivenhoeDam
 };
 
