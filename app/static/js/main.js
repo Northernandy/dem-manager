@@ -28,69 +28,95 @@ const baseMaps = {
 L.control.scale().addTo(map);
 
 // Layer groups for organization
-const floodLayers = L.layerGroup().addTo(map);
 const demLayer = L.layerGroup();
-
-// Sample GeoJSON layer (placeholder for actual flood data)
-const sampleGeoJSON = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "properties": {
-                "name": "Sample Flood Area",
-                "depth": "2.5m",
-                "date": "2022-02-28"
-            },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [153.0, -27.45],
-                        [153.05, -27.45],
-                        [153.05, -27.5],
-                        [153.0, -27.5],
-                        [153.0, -27.45]
-                    ]
-                ]
-            }
-        }
-    ]
-};
 
 // Add Wivenhoe Dam marker
 const wivenhoeDam = L.marker([-27.3919, 152.6085])
     .bindPopup("<b>Wivenhoe Dam</b><br>Major water supply and flood mitigation dam.")
     .addTo(map);
 
-// Style function for the flood layer
-function getFloodStyle(feature) {
-    return {
-        fillColor: '#3498db',
-        weight: 2,
-        opacity: 1,
-        color: '#2980b9',
-        fillOpacity: 0.7
-    };
-}
+// Create an overlay layers object
+const overlayMaps = {
+    "DEM Layer": demLayer,
+    "Wivenhoe Dam": wivenhoeDam
+};
 
-// Create a popup for each feature
-function onEachFeature(feature, layer) {
-    if (feature.properties) {
-        let popupContent = `
-            <h3>${feature.properties.name}</h3>
-            <p>Water Depth: ${feature.properties.depth}</p>
-            <p>Date: ${feature.properties.date}</p>
-        `;
-        layer.bindPopup(popupContent);
+// Add layer control to the map
+L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+// Layer toggle controls
+document.getElementById('toggle-dem').addEventListener('change', function(e) {
+    if (e.target.checked) {
+        map.addLayer(demLayer);
+    } else {
+        map.removeLayer(demLayer);
     }
-}
+});
 
-// Add the sample GeoJSON layer to the map
-const floodLayer = L.geoJSON(sampleGeoJSON, {
-    style: getFloodStyle,
-    onEachFeature: onEachFeature
-}).addTo(floodLayers);
+// Opacity slider control
+document.getElementById('opacity-slider').addEventListener('input', function(e) {
+    const opacityValue = e.target.value / 100;
+    document.getElementById('opacity-value').textContent = `${e.target.value}%`;
+    
+    // Update opacity for DEM layer
+    demLayer.eachLayer(function(layer) {
+        if (layer.setOpacity) {
+            layer.setOpacity(opacityValue);
+        } else if (layer.setStyle) {
+            layer.setStyle({ fillOpacity: opacityValue });
+        }
+    });
+});
+
+// Nominatim address search functionality
+document.getElementById('search-btn').addEventListener('click', function() {
+    searchAddress();
+});
+
+document.getElementById('address-search').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        searchAddress();
+    }
+});
+
+function searchAddress() {
+    const address = document.getElementById('address-search').value;
+    if (!address) return;
+    
+    // Show loading indicator
+    document.getElementById('info-content').innerHTML = '<p>Searching for address...</p>';
+    
+    // Use Nominatim API to search for the address
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=au`)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                const result = data[0];
+                const lat = parseFloat(result.lat);
+                const lon = parseFloat(result.lon);
+                
+                // Create a marker at the found location
+                const marker = L.marker([lat, lon]).addTo(map);
+                marker.bindPopup(`<b>${result.display_name}</b>`).openPopup();
+                
+                // Center map on the found location
+                map.setView([lat, lon], 15);
+                
+                // Update info panel
+                document.getElementById('info-content').innerHTML = `
+                    <p><strong>Found Location:</strong> ${result.display_name}</p>
+                    <p>Latitude: ${lat.toFixed(6)}</p>
+                    <p>Longitude: ${lon.toFixed(6)}</p>
+                `;
+            } else {
+                document.getElementById('info-content').innerHTML = '<p>No results found for that address.</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error searching for address:', error);
+            document.getElementById('info-content').innerHTML = '<p>Error searching for address. Please try again.</p>';
+        });
+}
 
 // Function to load a DEM layer from a GeoTIFF URL
 function loadDEMLayer(url) {
@@ -188,166 +214,54 @@ function loadDEMLayer(url) {
         });
 }
 
-// Function to fetch DEM data from the backend
-function fetchDEMData() {
-    document.getElementById('info-content').innerHTML = '<p>Requesting DEM data...</p>';
+// Event listener for DEM selector
+document.getElementById('dem-selector')?.addEventListener('change', function() {
+    const demId = this.value;
+    if (!demId) return;
     
-    fetch('/api/fetch-dem')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                document.getElementById('info-content').innerHTML = `
-                    <p><strong>DEM Data:</strong> Successfully fetched</p>
-                    <p>Resolution: ${data.resolution}m</p>
-                    <p>Coverage: ${data.coverage}</p>
-                    <p>File: ${data.file}</p>
-                `;
-                
-                // If the DEM data includes a URL to the GeoTIFF, we could load it here
-                if (data.url) {
-                    loadDEMLayer(data.url);
-                }
-            } else {
-                document.getElementById('info-content').innerHTML = `
-                    <p><strong>Error:</strong> ${data.message}</p>
-                `;
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching DEM data:', error);
-            document.getElementById('info-content').innerHTML = '<p>Error fetching DEM data. Please try again.</p>';
-        });
-}
-
-// Create an overlay layers object
-const overlayMaps = {
-    "Flood Extent": floodLayers,
-    "Elevation Model": demLayer
-};
-
-// Add layer control to the map
-L.control.layers(baseMaps, overlayMaps).addTo(map);
-
-// Layer toggle controls
-document.getElementById('toggle-flood').addEventListener('change', function(e) {
-    if (e.target.checked) {
-        map.addLayer(floodLayers);
-    } else {
-        map.removeLayer(floodLayers);
-    }
-});
-
-document.getElementById('toggle-dem').addEventListener('change', function(e) {
-    if (e.target.checked) {
-        map.addLayer(demLayer);
-    } else {
-        map.removeLayer(demLayer);
-    }
-});
-
-// Opacity slider control
-document.getElementById('opacity-slider').addEventListener('input', function(e) {
-    const opacityValue = e.target.value / 100;
-    document.getElementById('opacity-value').textContent = `${e.target.value}%`;
-    
-    // Update opacity for flood layers
-    floodLayers.eachLayer(function(layer) {
-        if (layer.setStyle) {
-            layer.setStyle({ fillOpacity: opacityValue });
-        }
-    });
-    
-    // Update opacity for DEM layer
-    demLayer.eachLayer(function(layer) {
-        if (layer.setStyle) {
-            layer.setStyle({ fillOpacity: opacityValue });
-        }
-    });
-});
-
-// Nominatim address search functionality
-document.getElementById('search-btn').addEventListener('click', function() {
-    searchAddress();
-});
-
-document.getElementById('address-search').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        searchAddress();
-    }
-});
-
-function searchAddress() {
-    const address = document.getElementById('address-search').value;
-    if (!address) return;
-    
-    // Show loading indicator
-    document.getElementById('info-content').innerHTML = '<p>Searching for address...</p>';
-    
-    // Use Nominatim API to search for the address
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=au`)
+    // Fetch DEM information
+    fetch(`/api/get-dem/${demId}`)
         .then(response => response.json())
         .then(data => {
-            if (data && data.length > 0) {
-                const result = data[0];
-                const lat = parseFloat(result.lat);
-                const lon = parseFloat(result.lon);
-                
-                // Create a marker at the found location
-                const marker = L.marker([lat, lon]).addTo(map);
-                marker.bindPopup(`<b>${result.display_name}</b>`).openPopup();
-                
-                // Center map on the found location
-                map.setView([lat, lon], 15);
-                
-                // Update info panel
-                document.getElementById('info-content').innerHTML = `
-                    <p><strong>Found Location:</strong> ${result.display_name}</p>
-                    <p>Latitude: ${lat.toFixed(6)}</p>
-                    <p>Longitude: ${lon.toFixed(6)}</p>
-                `;
+            if (data.success && data.dem) {
+                loadDEMLayer(data.dem.url);
             } else {
-                document.getElementById('info-content').innerHTML = '<p>No results found for that address.</p>';
+                document.getElementById('info-content').innerHTML = `
+                    <p><strong>Error:</strong> ${data.message || 'Failed to get DEM information'}</p>
+                `;
             }
         })
         .catch(error => {
-            console.error('Error searching for address:', error);
-            document.getElementById('info-content').innerHTML = '<p>Error searching for address. Please try again.</p>';
+            console.error('Error fetching DEM information:', error);
+            document.getElementById('info-content').innerHTML = '<p>Error fetching DEM information. Please try again.</p>';
         });
-}
+});
 
 // Event listener for the update button
 document.getElementById('update-map').addEventListener('click', function() {
-    const selectedDate = document.getElementById('date-selector').value;
-    const selectedLayer = document.getElementById('data-layer').value;
+    const selectedDem = document.getElementById('dem-selector').value;
     
-    // This would be replaced with an actual API call to fetch data
-    console.log(`Updating map with: Date=${selectedDate}, Layer=${selectedLayer}`);
-    
-    // If DEM layer is selected, fetch DEM data
-    if (selectedLayer === 'dem') {
-        fetchDEMData();
+    if (!selectedDem) {
+        document.getElementById('info-content').innerHTML = '<p>Please select a DEM layer first.</p>';
         return;
     }
     
-    // Simulate API call and update
-    document.getElementById('info-content').innerHTML = '<p>Loading data...</p>';
-    
-    // Simulate network delay
-    setTimeout(() => {
-        // Update the info panel
-        document.getElementById('info-content').innerHTML = `
-            <p><strong>Selected Date:</strong> ${selectedDate || 'None'}</p>
-            <p><strong>Selected Layer:</strong> ${selectedLayer}</p>
-            <p>Data updated successfully.</p>
-            <hr>
-            <p><small>This is a placeholder. In production, this would display actual data from the backend API.</small></p>
-        `;
-    }, 500);
+    // Fetch DEM information
+    fetch(`/api/get-dem/${selectedDem}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.dem) {
+                loadDEMLayer(data.dem.url);
+            } else {
+                document.getElementById('info-content').innerHTML = `
+                    <p><strong>Error:</strong> ${data.message || 'Failed to get DEM information'}</p>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching DEM information:', error);
+            document.getElementById('info-content').innerHTML = '<p>Error fetching DEM information. Please try again.</p>';
+        });
 });
 
 // Handle map clicks to show information
@@ -359,6 +273,6 @@ map.on('click', function(e) {
         <p><strong>Clicked Location:</strong></p>
         <p>Latitude: ${latlng.lat.toFixed(6)}</p>
         <p>Longitude: ${latlng.lng.toFixed(6)}</p>
-        <p>Click on flood areas for more details.</p>
+        <p>Click on DEM areas for more details.</p>
     `;
 });

@@ -145,19 +145,80 @@ def test_export_params():
         logger.error(f"Error during export test: {str(e)}")
         return False
 
+def test_fetch_small_dem():
+    """
+    Test fetching a small DEM and saving it to the data/geo directory.
+    """
+    # Define the updated URL for the 1 Second National DEM
+    new_url = "https://services.ga.gov.au/gis/rest/services/DEM_SRTM_1Second_2024/MapServer"
+    
+    # Define a smaller test area (around Brisbane CBD) to speed up testing
+    test_bbox = (152.9, -27.5, 153.0, -27.4)  # Small area around Brisbane
+    
+    # Create output directory for test data - use the standard data/geo directory
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+                             'data', 'geo')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Define output file
+    output_file = os.path.join(output_dir, "test_small_dem.tif")
+    
+    logger.info(f"Testing small DEM fetch with URL: {new_url}")
+    logger.info(f"Test area: {test_bbox}")
+    logger.info(f"Output file: {output_file}")
+    
+    # Try to fetch the DEM
+    start_time = time.time()
+    try:
+        success = fetch_dem(
+            bbox=test_bbox,
+            target_res_meters=30,  # 1 Second DEM is approximately 30m resolution
+            output_dir=output_dir,
+            output_file=output_file,
+            rest_url=new_url
+        )
+        
+        elapsed_time = time.time() - start_time
+        
+        if success:
+            file_size_bytes = os.path.getsize(output_file)
+            file_size_mb = file_size_bytes / (1024 * 1024)
+            
+            logger.info(f"Small DEM fetch test successful!")
+            logger.info(f"DEM saved to: {output_file}")
+            logger.info(f"File size: {file_size_mb:.2f} MB ({file_size_bytes} bytes)")
+            logger.info(f"Elapsed time: {elapsed_time:.2f} seconds")
+            return True
+        else:
+            logger.error("Small DEM fetch test failed.")
+            logger.error(f"Elapsed time: {elapsed_time:.2f} seconds")
+            return False
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"Error during small DEM fetch test: {str(e)}")
+        logger.error(f"Elapsed time: {elapsed_time:.2f} seconds")
+        return False
+
 if __name__ == "__main__":
     logger.info("Starting DEM fetch test script")
     
-    # Test the REST service connection
-    new_url = "https://services.ga.gov.au/gis/rest/services/DEM_SRTM_1Second_2024/MapServer"
-    if test_rest_service_connection(new_url):
-        # Test export parameters
-        if test_export_params():
-            # Test full DEM fetch
-            test_fetch_dem_with_new_url()
+    # Test the small DEM fetch (saves to data/geo directory)
+    logger.info("\n=== Testing Small DEM Fetch ===")
+    test_fetch_small_dem()
+    
+    # Optionally run the other tests if needed
+    run_other_tests = False
+    if run_other_tests:
+        # Test the REST service connection
+        new_url = "https://services.ga.gov.au/gis/rest/services/DEM_SRTM_1Second_2024/MapServer"
+        if test_rest_service_connection(new_url):
+            # Test export parameters
+            if test_export_params():
+                # Test full DEM fetch
+                test_fetch_dem_with_new_url()
+            else:
+                logger.error("Export parameters test failed. Skipping full DEM fetch test.")
         else:
-            logger.error("Export parameters test failed. Skipping full DEM fetch test.")
-    else:
-        logger.error("REST service connection test failed. Cannot proceed with further tests.")
+            logger.error("REST service connection test failed. Cannot proceed with further tests.")
     
     logger.info("DEM fetch test script completed")

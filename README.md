@@ -8,7 +8,15 @@ This project aims to provide an interactive visualization of flood data for Bris
 
 ## Features
 
-- Interactive map-based visualization of flood extents
+- Interactive map-based visualization with multiple base layers (Street and Topographic)
+- Digital Elevation Model (DEM) visualization with adjustable opacity
+- Support for multiple DEM types and resolutions:
+  - 5m LiDAR DEM (Brisbane Area)
+  - 1 Second National DEM (~30m resolution)
+  - 3 Second National DEM (~90m resolution)
+- Address search functionality using Nominatim API
+- DEM management interface for fetching, viewing, and deleting elevation data
+- REST API endpoints for DEM operations
 - Historical flood data analysis
 - Water depth and flow velocity visualization
 - Integration with elevation data for accurate flood modeling
@@ -28,7 +36,8 @@ brisbane-flood-viz/
 │   └── geo/                 # DEMs, shapefiles, overlays
 ├── notebooks/               # Data exploration and modeling (Jupyter)
 ├── src/                     # Reusable logic modules
-│   ├── pipeline/            # ETL scripts for BOM, SEQ Water
+│   ├── pipeline/            # ETL scripts for BOM, SEQ Water, DEM fetching
+│   │   └── dem_fetcher.py   # DEM download and processing from Geoscience Australia
 │   ├── modeling/            # ML or rule-based forecasting
 │   └── raster/              # DEM processing and flood simulation
 ├── tests/                   # Unit tests
@@ -63,25 +72,33 @@ brisbane-flood-viz/
 ### Running the Flask Application
 
 ```
-cd app
-python app.py
+python app/app.py
 ```
 
 The application will be available at `http://localhost:5000`.
 
-### Data Processing
+### DEM Management
 
-Data processing scripts are located in the `src/pipeline` directory. These scripts can be used to fetch and process data from official sources.
+The application includes a dedicated settings page for managing Digital Elevation Models:
 
-### Notebooks
+1. **Fetching DEMs**: Select a DEM type, specify a bounding box, and click "Fetch DEM Data"
+2. **Viewing DEMs**: Available DEMs are displayed as cards with metadata
+3. **Using DEMs**: Select a DEM from the dropdown on the main map page
+4. **Deleting DEMs**: Remove unwanted DEMs using the delete button
 
-Jupyter notebooks for data exploration and analysis are located in the `notebooks` directory.
+### Map Controls
+
+- **DEM Layer Selection**: Choose from available DEMs in the dropdown
+- **Layer Toggle**: Enable/disable the DEM layer
+- **Opacity Control**: Adjust the transparency of the DEM layer
+- **Address Search**: Find locations within Brisbane and surrounding areas
 
 ## Data Sources
 
-- [Bureau of Meteorology (BOM)](http://www.bom.gov.au/)
-- [SEQ Water](https://www.seqwater.com.au/)
-- [Queensland Spatial Catalogue](https://qldspatial.information.qld.gov.au/)
+- [Geoscience Australia](https://www.ga.gov.au/) - DEM data via REST services
+- [Bureau of Meteorology (BOM)](http://www.bom.gov.au/) - Weather and flood data
+- [SEQ Water](https://www.seqwater.com.au/) - Dam levels and releases
+- [Queensland Spatial Catalogue](https://qldspatial.information.qld.gov.au/) - Additional spatial data
 
 ## Deployment
 
