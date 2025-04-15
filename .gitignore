@@ -32,11 +32,18 @@ ENV/
 
 # Data files
 data/geo/*.tif
+data/geo/*.tif.aux.xml
+data/geo/temp_dem_chunks/
+data/geo/*_status.json
+data/geo/metadata/
 data/raw/*
 data/processed/*
+data/test/*
+data/test_geo/*
 !data/geo/.gitkeep
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/test/.gitkeep
 
 # Flask
 instance/
@@ -45,6 +52,15 @@ app/static/dem/*.tif
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Logs
+logs/
+*.log
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage_html_report/
 
 # OS specific
 .DS_Store
