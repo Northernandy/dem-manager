@@ -58,6 +58,10 @@ document.getElementById('opacity-slider').addEventListener('input', function(e) 
     const opacityValue = e.target.value / 100;
     document.getElementById('opacity-value').textContent = `${e.target.value}%`;
     
+    // Update slider background gradient to reflect current value
+    const percentage = e.target.value;
+    e.target.style.background = `linear-gradient(to right, #3498db 0%, #3498db ${percentage}%, #e0e0e0 ${percentage}%, #e0e0e0 100%)`;
+    
     // Update opacity for DEM layer
     demLayer.eachLayer(function(layer) {
         if (layer.setOpacity) {
@@ -66,6 +70,15 @@ document.getElementById('opacity-slider').addEventListener('input', function(e) 
             layer.setStyle({ fillOpacity: opacityValue });
         }
     });
+});
+
+// Initialize slider background on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const opacitySlider = document.getElementById('opacity-slider');
+    if (opacitySlider) {
+        const percentage = opacitySlider.value;
+        opacitySlider.style.background = `linear-gradient(to right, #3498db 0%, #3498db ${percentage}%, #e0e0e0 ${percentage}%, #e0e0e0 100%)`;
+    }
 });
 
 // Nominatim address search functionality

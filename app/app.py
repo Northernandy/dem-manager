@@ -58,7 +58,7 @@ os.makedirs(DEM_DIR, exist_ok=True)
 # Define DEM types and their corresponding REST URLs
 DEM_TYPES = {
     'lidar_5m': {
-        'name': '5m LiDAR DEM (Brisbane Area)',
+        'name': '5m LiDAR DEM',
         'url': 'https://services.ga.gov.au/gis/rest/services/DEM_LiDAR_5m_2025/MapServer',
         'resolution': 5,
         'description': 'High-resolution 5m LiDAR-derived Digital Elevation Model covering Brisbane and surrounds.'
@@ -68,12 +68,6 @@ DEM_TYPES = {
         'url': 'https://services.ga.gov.au/gis/rest/services/DEM_SRTM_1Second_2024/MapServer',
         'resolution': 30,
         'description': 'National 1 Second (~30m) Digital Elevation Model derived from SRTM with hydrological enforcement.'
-    },
-    'national_3s': {
-        'name': '3 Second National DEM',
-        'url': 'https://services.ga.gov.au/gis/rest/services/DEM_SRTM_3second/MapServer',
-        'resolution': 90,
-        'description': 'National 3 Second (~90m) Digital Elevation Model derived from SRTM.'
     }
 }
 
@@ -82,14 +76,14 @@ DEM_TYPES = {
 def index():
     """Render the main application page."""
     dems = get_available_dems()
-    return render_template('index.html', dems=dems)
+    return render_template('index.html', dems=dems, now=int(time.time()))
 
 @app.route('/settings')
 def settings():
     """Render the settings page."""
     dems = get_available_dems()
     dem_types = DEM_TYPES
-    return render_template('settings.html', dems=dems, dem_types=dem_types)
+    return render_template('settings.html', dems=dems, dem_types=dem_types, now=int(time.time()))
 
 @app.route('/api/get-dem/<dem_id>')
 def get_dem(dem_id):
@@ -173,13 +167,20 @@ def fetch_dem_api():
         
         # Initialize status file with explicit permissions
         try:
+            # Format initial display name to include DEM type if user provided a name
+            display_name = dem_name
+            if dem_name:
+                display_name = f"{dem_name} ({dem_config['name']})"
+            else:
+                display_name = dem_config['name']
+            
             with open(status_file, 'w') as f:
                 json.dump({
                     'status': 'starting',
                     'progress': 0,
                     'message': 'Initializing DEM download...',
                     'timestamp': time.time(),
-                    'display_name': dem_name  # Store the DEM name in the status file
+                    'display_name': display_name  # Store the formatted display name in the status file
                 }, f)
             
             # Verify the status file was created
@@ -200,12 +201,19 @@ def fetch_dem_api():
         def fetch_dem_thread():
             try:
                 # Update status to downloading
+                with open(status_file, 'r') as f:
+                    status_data = json.load(f)
+                
+                # Preserve the display_name from the original status file
+                display_name = status_data.get('display_name', '')
+                
                 with open(status_file, 'w') as f:
                     json.dump({
                         'status': 'downloading',
                         'progress': 5,
                         'message': 'Starting DEM download...',
-                        'timestamp': time.time()
+                        'timestamp': time.time(),
+                        'display_name': display_name  # Preserve the display name
                     }, f)
                 
                 logger.info(f"Updated status file to downloading: {status_file}")
@@ -229,16 +237,23 @@ def fetch_dem_api():
                         # Create metadata file
                         metadata_file = os.path.join(metadata_dir, f"{output_file}.json")
                         
+                        # Format initial display name to include DEM type if user provided a name
+                        display_name = dem_name
+                        if dem_name:
+                            display_name = f"{dem_name} ({dem_config['name']})"
+                        else:
+                            display_name = dem_config['name']
+                        
                         with open(metadata_file, 'w') as f:
                             json.dump({
-                                'display_name': dem_name,
+                                'display_name': display_name,
                                 'created_at': time.time(),
                                 'dem_type': dem_type,
                                 'bbox': bbox,
                                 'resolution': dem_config['resolution']
                             }, f)
                         
-                        logger.info(f"Created metadata for DEM: {output_file} with name: {dem_name}")
+                        logger.info(f"Created metadata for DEM: {output_file} with name: {display_name}")
                 else:
                     # Update status file with failure if fetch_dem returns False
                     with open(status_file, 'w') as f:
@@ -326,8 +341,8 @@ def delete_dem(filename):
                     else:
                         return jsonify({
                             'success': False, 
-                            'message': f'File is in use by another process. Please close any applications using this DEM and try again. Error: {str(e)}'
-                        })
+                                'message': f'File is in use by another process. Please close any applications using this DEM and try again. Error: {str(e)}'
+                            })
             
             # Also delete status file if it exists
             status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
@@ -447,6 +462,7 @@ def rename_dem():
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
         
+        # Simply update the display name without appending any additional information
         metadata['display_name'] = new_display_name
         
         with open(metadata_file, 'w') as f:
@@ -791,11 +807,8 @@ def get_available_dems():
                 except Exception as e:
                     logger.error(f"Error reading metadata for {filename}: {e}")
             
-            # Format the display name as "User Name (DEM Type)"
-            if user_name:
-                display_name = f"{user_name} ({type_name})"
-            else:
-                display_name = type_name
+            # Use the user-provided display name exactly as stored, or fall back to type_name if none exists
+            display_name = user_name if user_name else type_name
             
             dems.append({
                 'id': str(i),

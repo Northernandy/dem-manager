@@ -112,16 +112,126 @@ footer {
 }
 
 /* Custom slider styling */
+.form-range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(to right, #3498db 0%, #3498db 70%, #e0e0e0 70%, #e0e0e0 100%);
+    outline: none;
+    padding: 0;
+    margin: 10px 0;
+}
+
 .form-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
     background: #3498db;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    margin-top: -5px; /* Center the thumb on the track */
 }
 
 .form-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
     background: #3498db;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 4px rgba(0,0,0,0.3);
 }
 
 .form-range::-ms-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
     background: #3498db;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+
+.form-range::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 10px;
+    cursor: pointer;
+    background: transparent;
+    border-radius: 5px;
+}
+
+.form-range::-moz-range-track {
+    width: 100%;
+    height: 10px;
+    cursor: pointer;
+    background: #e0e0e0;
+    border-radius: 5px;
+}
+
+.form-range::-ms-track {
+    width: 100%;
+    height: 10px;
+    cursor: pointer;
+    background: transparent;
+    border-color: transparent;
+    color: transparent;
+}
+
+.form-range:focus {
+    outline: none;
+}
+
+.form-range:focus::-webkit-slider-runnable-track {
+    background: transparent;
+}
+
+.form-range:focus::-moz-range-track {
+    background: #d0d0d0;
+}
+
+/* Button styling - specifically target outline buttons to restore their appearance */
+.btn-outline-primary, .btn-outline-secondary, .btn-outline-danger {
+    background-color: transparent;
+    width: auto;
+    border: 1px solid;
+}
+
+.btn-outline-primary {
+    color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-outline-primary:hover {
+    color: #fff;
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-outline-secondary {
+    color: #6c757d;
+    border-color: #6c757d;
+}
+
+.btn-outline-secondary:hover {
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.btn-outline-danger {
+    color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-outline-danger:hover {
+    color: #fff;
+    background-color: #dc3545;
+    border-color: #dc3545;
 }
 
 /* Responsive adjustments */
