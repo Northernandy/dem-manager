@@ -5,93 +5,186 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Brisbane Flood Visualization</title>
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        .container-fluid {
+            height: calc(100vh - 40px);
+            padding: 0;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .control-panel {
+            position: absolute;
+            top: calc(20% + 60px);
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 0 0 5px 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            max-width: 300px;
+            border-top: 1px solid #eee;
+        }
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            max-width: 300px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .search-container {
+            position: absolute;
+            top: 20%;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px 5px 0 0;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 300px;
+            border-bottom: none;
+        }
+        /* Add styles for a smaller navbar */
+        .navbar {
+            padding-top: 0;
+            padding-bottom: 0;
+            min-height: 40px;
+            height: 40px;
+        }
+        .navbar-brand {
+            padding-top: 0;
+            padding-bottom: 0;
+            font-size: 1rem;
+        }
+        .nav-link {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+        /* Ensure Leaflet controls are visible */
+        .leaflet-top.leaflet-left {
+            top: 10px;
+            left: 10px;
+        }
+        .leaflet-control-layers {
+            clear: both;
+        }
+    </style>
 </head>
 <body>
-    <header class="bg-dark text-white py-3">
-        <div class="container">
-            <h1 class="text-center">Brisbane Flood Visualization</h1>
-        </div>
-    </header>
-    
-    <div class="container-fluid p-0">
-        <div class="row g-0">
-            <div class="col-md-9" id="map-container">
-                <div id="map"></div>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Brisbane Flood Visualization</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">Settings</a>
+                    </li>
+                </ul>
             </div>
-            <div class="col-md-3" id="controls">
-                <div class="control-panel">
-                    <h2>Flood Data Controls</h2>
-                    
-                    <div class="mb-3">
-                        <label for="address-search" class="form-label">Search Location:</label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="address-search" placeholder="Enter address...">
-                            <button class="btn btn-primary" id="search-btn">Search</button>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="date-selector" class="form-label">Date:</label>
-                        <input type="date" class="form-control" id="date-selector">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="data-layer" class="form-label">Data Layer:</label>
-                        <select class="form-select" id="data-layer">
-                            <option value="flood-extent">Flood Extent</option>
-                            <option value="water-depth">Water Depth</option>
-                            <option value="flow-velocity">Flow Velocity</option>
-                            <option value="dem">Digital Elevation Model</option>
-                        </select>
-                    </div>
-                    
-                    <h3 class="h5 mt-4 mb-3">Layer Controls</h3>
-                    
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="toggle-flood" checked>
-                        <label class="form-check-label" for="toggle-flood">Flood Extent</label>
-                    </div>
-                    
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="toggle-dem">
-                        <label class="form-check-label" for="toggle-dem">Elevation Model</label>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="opacity-slider" class="form-label">Layer Opacity: <span id="opacity-value">70%</span></label>
-                        <input type="range" class="form-range" id="opacity-slider" min="0" max="100" value="70">
-                    </div>
-                    
-                    <button class="btn btn-primary w-100" id="update-map">Update Map</button>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <!-- Map Container -->
+        <div id="map"></div>
+        
+        <!-- Search Container -->
+        <div class="search-container">
+            <div class="input-group">
+                <input type="text" id="address-search" class="form-control" placeholder="Search for an address...">
+                <button class="btn btn-primary" type="button" id="search-btn">
+                    <i class="bi bi-search"></i> Search
+                </button>
+            </div>
+        </div>
+        
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <h5>Map Controls</h5>
+            
+            <!-- DEM Selector -->
+            <div class="mb-3">
+                <label for="dem-selector" class="form-label">DEM Layer</label>
+                <select class="form-select form-select-sm" id="dem-selector">
+                    <option value="">Select a DEM</option>
+                    {% for dem in dems %}
+                    <option value="{{ dem.id }}">{{ dem.display_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Layer Toggles -->
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="toggle-dem" checked>
+                    <label class="form-check-label" for="toggle-dem">DEM Layer</label>
                 </div>
-                
-                <div class="info-panel mt-3">
-                    <h2>Information</h2>
-                    <div id="info-content">
-                        <p>Select a location on the map to see detailed information.</p>
-                    </div>
-                </div>
+            </div>
+            
+            <!-- Opacity Slider -->
+            <div class="mb-3">
+                <label for="opacity-slider" class="form-label">Layer Opacity: <span id="opacity-value">70%</span></label>
+                <input type="range" class="form-range" id="opacity-slider" min="0" max="100" value="70">
+            </div>
+            
+            <!-- Update Button -->
+            <div class="d-grid">
+                <button class="btn btn-sm btn-primary" id="update-map">Update Map</button>
+            </div>
+            
+            <!-- Settings Link -->
+            <div class="mt-2 text-center">
+                <a href="/settings" class="btn btn-sm btn-outline-secondary">Manage DEM Settings</a>
+            </div>
+        </div>
+        
+        <!-- Info Panel -->
+        <div class="info-panel">
+            <h5>Information</h5>
+            <div id="info-content">
+                <p>Click on the map to get information about a location.</p>
+                <p>Use the controls to select and adjust DEM layers.</p>
             </div>
         </div>
     </div>
 
-    <footer class="bg-dark text-white text-center py-3">
-        <p class="mb-0">Brisbane Flood Visualization Project</p>
+    <!-- Footer -->
+    <footer class="footer py-2 bg-light" style="position: absolute; bottom: 0; width: 100%; height: 30px; line-height: 30px; z-index: 1000;">
+        <div class="container text-center">
+            <span class="text-muted small">Brisbane Flood Visualization &copy; 2025</span>
+        </div>
     </footer>
 
-    <!-- Bootstrap 5 JS Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- GeoTIFF handling libraries -->
-    <script src="https://unpkg.com/geotiff"></script>
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <!-- GeoRaster for GeoTIFF support -->
     <script src="https://unpkg.com/georaster"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

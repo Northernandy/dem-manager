@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brisbane Flood Visualization - Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .dem-card {
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        .dem-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .settings-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            background-color: #f8f9fa;
+        }
+        /* Add styles for a smaller navbar */
+        .navbar {
+            padding-top: 0;
+            padding-bottom: 0;
+            min-height: 40px;
+            height: 40px;
+        }
+        .navbar-brand {
+            padding-top: 0;
+            padding-bottom: 0;
+            font-size: 1rem;
+        }
+        .nav-link {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">Brisbane Flood Visualization</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/settings">Settings</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1>Settings</h1>
+        
+        <!-- Alert messages -->
+        <div id="alert-container"></div>
+        
+        <!-- Tabs for different settings sections -->
+        <ul class="nav nav-tabs mb-4" id="settings-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="dem-tab" data-bs-toggle="tab" data-bs-target="#dem-settings" type="button" role="tab">DEM Management</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-settings" type="button" role="tab">Map Settings</button>
+            </li>
+        </ul>
+        
+        <div class="tab-content">
+            <!-- DEM Management Tab -->
+            <div class="tab-pane fade show active" id="dem-settings" role="tabpanel">
+                <div class="row">
+                    <!-- Fetch New DEM Section -->
+                    <div class="col-md-6">
+                        <div class="settings-section">
+                            <h3>Fetch New DEM</h3>
+                            <p class="text-muted">Download Digital Elevation Model data from Geoscience Australia.</p>
+                            
+                            <form id="fetch-dem-form">
+                                <div class="mb-3">
+                                    <label for="dem-type" class="form-label">DEM Type</label>
+                                    <select class="form-select" id="dem-type" required>
+                                        {% for key, config in dem_types.items() %}
+                                        <option value="{{ key }}" data-description="{{ config.description }}">{{ config.name }} ({{ config.resolution }}m)</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text" id="dem-description"></div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Bounding Box (minX, minY, maxX, maxY)</label>
+                                    <div class="row g-2">
+                                        <div class="col-3">
+                                            <input type="number" class="form-control" id="bbox-minx" placeholder="minX" step="0.1" value="152.0">
+                                        </div>
+                                        <div class="col-3">
+                                            <input type="number" class="form-control" id="bbox-miny" placeholder="minY" step="0.1" value="-28.0">
+                                        </div>
+                                        <div class="col-3">
+                                            <input type="number" class="form-control" id="bbox-maxx" placeholder="maxX" step="0.1" value="153.5">
+                                        </div>
+                                        <div class="col-3">
+                                            <input type="number" class="form-control" id="bbox-maxy" placeholder="maxY" step="0.1" value="-27.0">
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Default is wider Brisbane catchment area including Wivenhoe Dam.</div>
+                                </div>
+                                
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-primary" id="fetch-dem-btn">
+                                        <span class="spinner-border spinner-border-sm d-none" id="fetch-spinner" role="status"></span>
+                                        Fetch DEM Data
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Available DEMs Section -->
+                    <div class="col-md-6">
+                        <div class="settings-section">
+                            <h3>Available DEMs</h3>
+                            <p class="text-muted">Manage your downloaded Digital Elevation Models.</p>
+                            
+                            <div id="dems-container">
+                                {% if dems %}
+                                    {% for dem in dems %}
+                                    <div class="card dem-card" data-dem-id="{{ dem.id }}">
+                                        <div class="card-body">
+                                            <h5 class="card-title">{{ dem.display_name }}</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">{{ dem.name }}</h6>
+                                            <p class="card-text">
+                                                <small>Resolution: {{ dem.resolution }}m</small><br>
+                                                <small>Coverage: {{ dem.coverage }}</small><br>
+                                                <small>Size: {{ dem.size }}</small>
+                                            </p>
+                                            <div class="d-flex justify-content-between">
+                                                <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="{{ dem.name }}">Delete</button>
+                                                <a href="/" class="btn btn-sm btn-outline-primary view-dem-btn" data-dem-id="{{ dem.id }}">View on Map</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="alert alert-info">No DEMs available. Fetch a DEM to get started.</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Map Settings Tab -->
+            <div class="tab-pane fade" id="map-settings" role="tabpanel">
+                <div class="settings-section">
+                    <h3>Map Configuration</h3>
+                    <p class="text-muted">Configure map display settings.</p>
+                    
+                    <form id="map-settings-form">
+                        <div class="mb-3">
+                            <label for="default-center" class="form-label">Default Map Center</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <input type="number" class="form-control" id="default-lat" placeholder="Latitude" step="0.000001" value="-27.5">
+                                </div>
+                                <div class="col-6">
+                                    <input type="number" class="form-control" id="default-lon" placeholder="Longitude" step="0.000001" value="152.8">
+                                </div>
+                            </div>
+                            <div class="form-text">Default center coordinates for the map.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="default-zoom" class="form-label">Default Zoom Level</label>
+                            <input type="range" class="form-range" id="default-zoom" min="5" max="18" step="1" value="10">
+                            <div class="d-flex justify-content-between">
+                                <span>5 (Far)</span>
+                                <span id="zoom-value">10</span>
+                                <span>18 (Close)</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="default-basemap" class="form-label">Default Base Map</label>
+                            <select class="form-select" id="default-basemap">
+                                <option value="street">Street Map</option>
+                                <option value="topo">Topographic Map</option>
+                            </select>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Save Map Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-5 py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">Brisbane Flood Visualization &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Show DEM description based on selection
+        document.getElementById('dem-type').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const description = selectedOption.getAttribute('data-description') || '';
+            document.getElementById('dem-description').textContent = description;
+        });
+        
+        // Trigger the change event to show the initial description
+        document.getElementById('dem-type').dispatchEvent(new Event('change'));
+        
+        // Update zoom value display
+        document.getElementById('default-zoom').addEventListener('input', function() {
+            document.getElementById('zoom-value').textContent = this.value;
+        });
+        
+        // Handle DEM fetch form submission
+        document.getElementById('fetch-dem-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Show spinner
+            const spinner = document.getElementById('fetch-spinner');
+            const fetchBtn = document.getElementById('fetch-dem-btn');
+            spinner.classList.remove('d-none');
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = ' Fetching DEM...';
+            fetchBtn.prepend(spinner);
+            
+            // Get form values
+            const demType = document.getElementById('dem-type').value;
+            const minX = parseFloat(document.getElementById('bbox-minx').value);
+            const minY = parseFloat(document.getElementById('bbox-miny').value);
+            const maxX = parseFloat(document.getElementById('bbox-maxx').value);
+            const maxY = parseFloat(document.getElementById('bbox-maxy').value);
+            
+            // Create request data
+            const requestData = {
+                dem_type: demType,
+                bbox: [minX, minY, maxX, maxY]
+            };
+            
+            // Send fetch request
+            fetch('/api/fetch-dem', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide spinner
+                spinner.classList.add('d-none');
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = 'Fetch DEM Data';
+                
+                // Show result
+                let alertClass = data.success ? 'alert-success' : 'alert-danger';
+                showAlert(data.message, alertClass);
+                
+                // Refresh the DEMs list if successful
+                if (data.success) {
+                    refreshDEMsList();
+                }
+            })
+            .catch(error => {
+                // Hide spinner
+                spinner.classList.add('d-none');
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = 'Fetch DEM Data';
+                
+                // Show error
+                showAlert('Error: ' + error.message, 'alert-danger');
+            });
+        });
+        
+        // Handle DEM deletion
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('delete-dem-btn')) {
+                if (confirm('Are you sure you want to delete this DEM?')) {
+                    const filename = e.target.dataset.demFilename;
+                    
+                    fetch(`/api/delete-dem/${filename}`, {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        let alertClass = data.success ? 'alert-success' : 'alert-danger';
+                        showAlert(data.message, alertClass);
+                        
+                        if (data.success) {
+                            // Remove the card from the UI
+                            const card = e.target.closest('.dem-card');
+                            card.remove();
+                            
+                            // If no DEMs left, show the "No DEMs" message
+                            if (document.querySelectorAll('.dem-card').length === 0) {
+                                document.getElementById('dems-container').innerHTML = 
+                                    '<div class="alert alert-info">No DEMs available. Fetch a DEM to get started.</div>';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        showAlert('Error: ' + error.message, 'alert-danger');
+                    });
+                }
+            }
+        });
+        
+        // Function to refresh the DEMs list
+        function refreshDEMsList() {
+            fetch('/api/list-dems')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const demsContainer = document.getElementById('dems-container');
+                        
+                        if (data.dems.length === 0) {
+                            demsContainer.innerHTML = '<div class="alert alert-info">No DEMs available. Fetch a DEM to get started.</div>';
+                            return;
+                        }
+                        
+                        let html = '';
+                        data.dems.forEach(dem => {
+                            html += `
+                                <div class="card dem-card" data-dem-id="${dem.id}">
+                                    <div class="card-body">
+                                        <h5 class="card-title">${dem.display_name}</h5>
+                                        <h6 class="card-subtitle mb-2 text-muted">${dem.name}</h6>
+                                        <p class="card-text">
+                                            <small>Resolution: ${dem.resolution}m</small><br>
+                                            <small>Coverage: ${dem.coverage}</small><br>
+                                            <small>Size: ${dem.size}</small>
+                                        </p>
+                                        <div class="d-flex justify-content-between">
+                                            <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="${dem.name}">Delete</button>
+                                            <a href="/" class="btn btn-sm btn-outline-primary view-dem-btn" data-dem-id="${dem.id}">View on Map</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        demsContainer.innerHTML = html;
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error refreshing DEMs list: ' + error.message, 'alert-danger');
+                });
+        }
+        
+        // Function to show alerts
+        function showAlert(message, alertClass) {
+            const alertContainer = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            alertContainer.appendChild(alert);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }, 5000);
+        }
+        
+        // Handle map settings form submission
+        document.getElementById('map-settings-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Get form values
+            const defaultLat = parseFloat(document.getElementById('default-lat').value);
+            const defaultLon = parseFloat(document.getElementById('default-lon').value);
+            const defaultZoom = parseInt(document.getElementById('default-zoom').value);
+            const defaultBasemap = document.getElementById('default-basemap').value;
+            
+            // Save settings to localStorage
+            const mapSettings = {
+                center: [defaultLat, defaultLon],
+                zoom: defaultZoom,
+                basemap: defaultBasemap
+            };
+            
+            localStorage.setItem('mapSettings', JSON.stringify(mapSettings));
+            
+            // Show success message
+            showAlert('Map settings saved successfully!', 'alert-success');
+        });
+        
+        // Load saved map settings on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedSettings = localStorage.getItem('mapSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                
+                // Apply saved settings to form
+                if (settings.center) {
+                    document.getElementById('default-lat').value = settings.center[0];
+                    document.getElementById('default-lon').value = settings.center[1];
+                }
+                
+                if (settings.zoom) {
+                    document.getElementById('default-zoom').value = settings.zoom;
+                    document.getElementById('zoom-value').textContent = settings.zoom;
+                }
+                
+                if (settings.basemap) {
+                    document.getElementById('default-basemap').value = settings.basemap;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
