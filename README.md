@@ -11,9 +11,10 @@ This project aims to provide an interactive visualization of flood data for Bris
 - Interactive map-based visualization with multiple base layers (Street and Topographic)
 - Digital Elevation Model (DEM) visualization with adjustable opacity
 - Support for multiple DEM types and resolutions:
-  - 5m LiDAR DEM (Brisbane Area)
+  - 5m LiDAR DEM
   - 1 Second National DEM (~30m resolution)
-  - 3 Second National DEM (~90m resolution)
+- Custom naming for DEM files with automatic numbering to prevent conflicts
+- Enhanced slider UI for map settings and opacity controls
 - Address search functionality using Nominatim API
 - DEM management interface for fetching, viewing, and deleting elevation data
 - REST API endpoints for DEM operations
@@ -21,6 +22,7 @@ This project aims to provide an interactive visualization of flood data for Bris
 - Water depth and flow velocity visualization
 - Integration with elevation data for accurate flood modeling
 - Data pipeline for automated updates from official sources
+- Comprehensive logging and error handling
 
 ## Project Structure
 
@@ -34,12 +36,17 @@ brisbane-flood-viz/
 │   ├── raw/                 # Original CSVs, raster downloads
 │   ├── processed/           # Cleaned data, Parquet files
 │   └── geo/                 # DEMs, shapefiles, overlays
+│       └── metadata/        # Metadata for DEM files
+├── logs/                    # Application logs
+│   └── app.log              # Main log file
 ├── notebooks/               # Data exploration and modeling (Jupyter)
 ├── src/                     # Reusable logic modules
 │   ├── pipeline/            # ETL scripts for BOM, SEQ Water, DEM fetching
 │   │   └── dem_fetcher.py   # DEM download and processing from Geoscience Australia
 │   ├── modeling/            # ML or rule-based forecasting
-│   └── raster/              # DEM processing and flood simulation
+│   ├── raster/              # DEM processing and flood simulation
+│   └── tests/               # Automated tests
+│       └── test_dem_fetcher.py  # Tests for DEM fetching functionality
 ├── tests/                   # Unit tests
 ├── requirements.txt         # Python dependencies
 └── README.md
@@ -77,9 +84,60 @@ python app/app.py
 
 The application will be available at `http://localhost:5000`.
 
-### DEM Management
+### Logging
 
-The application includes a dedicated settings page for managing Digital Elevation Models:
+The application maintains comprehensive logs in the `logs/app.log` file. These logs include:
+- DEM fetching operations and status
+- API requests and responses
+- Error messages and exceptions
+- Application startup and shutdown events
+
+You can view the logs directly or through the application's log viewer interface.
+
+### Running Tests
+
+The project includes a comprehensive test suite built with pytest. To run the tests:
+
+```bash
+# Install pytest if you don't have it
+pip install pytest
+
+# Run all tests
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Run specific test categories
+pytest -m dem  # DEM-related tests
+pytest -m app  # Flask app tests
+pytest -m data  # Data fetching tests
+
+# Run tests in a specific file
+pytest tests/pipeline/test_dem_fetcher.py
+
+# Run tests with coverage report
+pytest --cov=app --cov=src
+```
+
+The test suite includes:
+- Unit tests for the DEM fetcher
+- API endpoint tests for the Flask application
+- Data fetching tests
+
+#### Test Structure
+```
+tests/
+├── conftest.py          # Shared test fixtures and configuration
+├── app/                 # Tests for Flask application
+│   └── test_routes.py   # Tests for API endpoints
+├── pipeline/            # Tests for data pipeline modules
+│   ├── test_dem_fetcher.py  # Tests for DEM fetching
+│   └── test_data_fetcher.py  # Tests for other data sources
+└── fixtures/            # Test data fixtures
+```
+
+### DEM Management
 
 1. **Fetching DEMs**: Select a DEM type, specify a bounding box, and click "Fetch DEM Data"
 2. **Viewing DEMs**: Available DEMs are displayed as cards with metadata
