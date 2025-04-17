@@ -3,7 +3,7 @@ import os
 import json
 import uuid
 import logging
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 import sys
 import glob
@@ -11,17 +11,57 @@ import shutil
 import time
 import gc
 import subprocess
+import rasterio
 
 # Add the project root to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import the DEM fetcher
-from src.pipeline.dem_fetcher import DEMFetcher, fetch_dem
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Import the DEM fetcher
+try:
+    from src.pipeline.wcs_geotiff_handler import fetch_geotiff_dem
+    from src.pipeline.wms_rgb_handler import fetch_rgb_dem
+    
+    def fetch_dem(bbox, dem_type, data_type, resolution=None, output_file=None):
+        """
+        Fetch a DEM based on the specified parameters.
+        
+        Args:
+            bbox (tuple): Bounding box (minx, miny, maxx, maxy)
+            dem_type (str): Type of DEM to fetch (e.g., 'national_1s', 'lidar_5m')
+            data_type (str): Type of data to fetch ('raw' or 'rgb')
+            resolution (int, optional): Resolution in meters
+            output_file (str, optional): Output file name
+            
+        Returns:
+            dict: Result of the operation
+        """
+        logger.info(f"Fetching DEM: {dem_type}, {data_type}, bbox={bbox}")
+        
+        # Determine which handler to use based on data type
+        if data_type == 'raw':
+            result = fetch_geotiff_dem(bbox, dem_type, resolution, output_file)
+        elif data_type == 'rgb':
+            result = fetch_rgb_dem(bbox, dem_type, resolution, output_file)
+        else:
+            logger.error(f"Invalid data type: {data_type}")
+            return {
+                'success': False,
+                'message': f"Invalid data type: {data_type}. Must be 'raw' or 'rgb'."
+            }
+        
+        return result
+    
+    logger.info("Successfully imported DEM handlers")
+except ImportError as e:
+    logger.warning(f"Could not import DEM handlers: {e}")
+    # Define placeholder function if import fails
+    def fetch_dem(bbox, dem_type, data_type, resolution=None, output_file=None):
+        return {'success': False, 'message': 'DEM Fetcher not fully implemented yet.'}
 
 # Set up file logging
 log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
@@ -104,7 +144,16 @@ def get_dem(dem_id):
 @app.route('/dem/<filename>')
 def serve_dem(filename):
     """Serve a DEM file."""
-    return send_from_directory(DEM_DIR, filename)
+    file_path = os.path.join(DEM_DIR, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Determine content type based on file extension
+    content_type = 'image/tiff'
+    if filename.lower().endswith('.png'):
+        content_type = 'image/png'
+    
+    return send_file(file_path, mimetype=content_type)
 
 @app.route('/api/fetch-dem', methods=['POST'])
 def fetch_dem_api():
@@ -128,6 +177,9 @@ def fetch_dem_api():
             logger.error(f"Unknown DEM type requested: {dem_type}")
             return jsonify({'success': False, 'message': f'Unknown DEM type: {dem_type}'})
         
+        # Get resolution from DEM type configuration
+        target_res_meters = dem_config.get('resolution', 5)  # Default to 5m if not specified
+        
         # Get bounding box (default to Brisbane area if not specified)
         bbox = data.get('bbox', (152.0, -28.0, 153.5, -27.0))
         
@@ -142,7 +194,8 @@ def fetch_dem_api():
             logger.error(f"Invalid bounding box coordinates: {bbox}")
             return jsonify({'success': False, 'message': 'Invalid bounding box coordinates. Must be numeric values.'})
         
-        file_extension = '.png' if data_type == 'rgb' else '.tif'
+        # Use appropriate extension based on data type
+        file_extension = '.tif' if data_type == 'raw' else '.png'
         
         bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
         base_output_file = f"{dem_type}_{bbox_str}{file_extension}" 
@@ -215,16 +268,42 @@ def fetch_dem_api():
                 
                 logger.info(f"Thread starting fetch for {output_file} with dataType={thread_data_type}")
                 
-                fetch_dem(
-                    dem_url=dem_config['url'], 
-                    bbox=bbox, 
-                    output_path=output_path, 
-                    status_file=status_file,
-                    data_type=thread_data_type 
+                # Use our updated fetch_dem function with the correct parameters
+                result = fetch_dem(
+                    bbox=bbox,
+                    dem_type=dem_type,
+                    data_type=thread_data_type,
+                    resolution=target_res_meters,
+                    output_file=output_file
                 )
                 
-                logger.info(f"fetch_dem completed for {output_file}")
-
+                logger.info(f"fetch_dem completed for {output_file} with result: {result}")
+                
+                # Update status based on the result
+                if result.get('success', False):
+                    # If successful, update the status file
+                    with open(status_file, 'w') as f:
+                        json.dump({
+                            'status': 'completed',
+                            'progress': 100,
+                            'message': 'DEM download completed successfully',
+                            'timestamp': time.time(),
+                            'display_name': display_name,
+                            'dataType': thread_data_type,
+                            'file_path': result.get('file_path', '')
+                        }, f)
+                else:
+                    # If failed, update the status file with the error message
+                    with open(status_file, 'w') as f:
+                        json.dump({
+                            'status': 'error',
+                            'progress': 100,
+                            'message': f"Error fetching DEM: {result.get('message', 'Unknown error')}",
+                            'timestamp': time.time(),
+                            'display_name': display_name,
+                            'dataType': thread_data_type
+                        }, f)
+                
             except Exception as e:
                 logger.exception(f"Error in fetch_dem_thread for {output_file}: {e}")
                 try:
@@ -244,7 +323,7 @@ def fetch_dem_api():
                          }, f)
                 except Exception as se:
                     logger.error(f"Failed to update status file after thread error for {output_file}: {se}")
-
+        
         thread = threading.Thread(target=fetch_dem_thread)
         thread.start()
         
@@ -330,10 +409,11 @@ def check_dem_status(filename):
                 with open(status_file, 'r') as f:
                     status_data = json.load(f)
                 
-                logger.info(f"DEM status check for {filename}: {status_data['status']} - {status_data['progress']}% - {status_data['message']}")
+                logger.info(f"DEM status check for {filename}: {status_data.get('status', 'unknown')} - {status_data.get('progress', 0)}% - {status_data.get('message', 'No message')}")
                 
-                if os.path.exists(os.path.join(DEM_DIR, filename)):
-                    dem_file_path = os.path.join(DEM_DIR, filename)
+                # Check if the DEM file exists
+                dem_file_path = os.path.join(DEM_DIR, filename)
+                if os.path.exists(dem_file_path):
                     file_size_bytes = os.path.getsize(dem_file_path)
                     file_size_mb = file_size_bytes / (1024 * 1024)
                     
@@ -343,23 +423,55 @@ def check_dem_status(filename):
                         'formatted': f"{file_size_mb:.2f} MB"
                     }
                     
-                    if status_data['status'] not in ['complete', 'failed']:
-                        status_data['message'] += f" (Current file size: {file_size_mb:.2f} MB)"
+                    # If the file exists but status is not 'completed', update it
+                    if status_data.get('status') != 'completed':
+                        status_data['status'] = 'completed'
+                        status_data['progress'] = 100
+                        status_data['message'] = 'DEM download completed successfully'
+                        
+                        with open(status_file, 'w') as f:
+                            json.dump(status_data, f)
                 
-                return jsonify({'success': True, 'status': status_data})
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parsing status file for {filename}: {e}")
-                return jsonify({'success': False, 'message': f'Error reading status file: {e}', 'status': 'error'})
+                # Map status values to what the frontend expects
+                status_mapping = {
+                    'starting': 'starting',
+                    'downloading': 'downloading',
+                    'completed': 'complete',
+                    'error': 'failed'
+                }
+                
+                # Create a response that matches what the frontend expects
+                response = {
+                    'success': True,
+                    'status': {
+                        'status': status_mapping.get(status_data.get('status', 'unknown'), 'unknown'),
+                        'progress': status_data.get('progress', 0),
+                        'message': status_data.get('message', 'No status message available')
+                    },
+                    'status_data': status_data
+                }
+                
+                return jsonify(response)
+            except Exception as e:
+                logger.exception(f"Error reading status file for {filename}")
+                return jsonify({
+                    'success': False,
+                    'message': f"Error reading status file: {str(e)}"
+                })
         else:
-            dem_file = os.path.join(DEM_DIR, filename)
-            if os.path.exists(dem_file):
-                file_size_bytes = os.path.getsize(dem_file)
+            # If no status file exists, check if the DEM file exists
+            dem_file_path = os.path.join(DEM_DIR, filename)
+            if os.path.exists(dem_file_path):
+                # File exists but no status file, create a completed status
+                file_size_bytes = os.path.getsize(dem_file_path)
                 file_size_mb = file_size_bytes / (1024 * 1024)
                 
                 status_data = {
-                    'status': 'complete', 
-                    'progress': 100, 
-                    'message': f'DEM download complete: {file_size_mb:.2f} MB file created',
+                    'status': 'completed',
+                    'progress': 100,
+                    'message': 'DEM file exists',
+                    'timestamp': time.time(),
+                    'file_path': dem_file_path,
                     'file_size': {
                         'bytes': file_size_bytes,
                         'mb': round(file_size_mb, 2),
@@ -367,18 +479,30 @@ def check_dem_status(filename):
                     }
                 }
                 
-                logger.info(f"DEM status check for {filename}: complete - file exists ({file_size_mb:.2f} MB)")
-                return jsonify({'success': True, 'status': status_data})
+                # Create a response that matches what the frontend expects
+                response = {
+                    'success': True,
+                    'status': {
+                        'status': 'complete',
+                        'progress': 100,
+                        'message': 'DEM file exists'
+                    },
+                    'status_data': status_data
+                }
+                
+                return jsonify(response)
             else:
-                logger.warning(f"DEM status check for {filename}: status file not found and DEM file does not exist")
+                logger.warning(f"No status file or DEM file found for {filename}")
                 return jsonify({
-                    'success': False, 
-                    'message': 'Status file not found and DEM file does not exist',
-                    'status': 'failed'
+                    'success': False,
+                    'message': f"No status information available for {filename}"
                 })
     except Exception as e:
         logger.exception(f"Error checking DEM status for {filename}")
-        return jsonify({'success': False, 'message': str(e), 'status': 'error'})
+        return jsonify({
+            'success': False,
+            'message': f"Error checking DEM status: {str(e)}"
+        })
 
 @app.route('/api/rename-dem', methods=['POST'])
 def rename_dem():
@@ -400,7 +524,6 @@ def rename_dem():
         if os.path.exists(metadata_file):
             with open(metadata_file, 'r') as f:
                 metadata = json.load(f)
-        
         metadata['display_name'] = new_display_name
         
         with open(metadata_file, 'w') as f:
@@ -646,87 +769,226 @@ def get_dem_logs():
         logger.exception(f"Error retrieving DEM logs")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/api/get-dem-bounds/<dem_id>', methods=['GET'])
+def get_dem_bounds(dem_id):
+    """Get the bounds for a specific DEM file."""
+    logger.info(f"Getting bounds for DEM: {dem_id}")
+    
+    # Check if the DEM ID contains a file extension
+    if '.' in dem_id:
+        dem_id = os.path.splitext(dem_id)[0]
+    
+    # Try to find the DEM file with either .tif or .png extension
+    tif_file = os.path.join(DEM_DIR, f"{dem_id}.tif")
+    png_file = os.path.join(DEM_DIR, f"{dem_id}.png")
+    
+    dem_file = None
+    if os.path.exists(tif_file):
+        dem_file = tif_file
+    elif os.path.exists(png_file):
+        dem_file = png_file
+    
+    if not dem_file:
+        logger.error(f"DEM file not found for ID: {dem_id}")
+        return jsonify({'success': False, 'message': 'DEM file not found'})
+    
+    # Check for metadata file
+    metadata_dir = os.path.join(DEM_DIR, 'metadata')
+    metadata_file = os.path.join(metadata_dir, f"{dem_id}.json")
+    if os.path.exists(metadata_file):
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+                
+            if 'bbox' in metadata:
+                bbox = metadata['bbox']
+                bounds = {
+                    'min_lat': bbox[1],
+                    'min_lon': bbox[0],
+                    'max_lat': bbox[3],
+                    'max_lon': bbox[2]
+                }
+                return jsonify({'success': True, 'bounds': bounds})
+        except Exception as e:
+            logger.error(f"Error reading metadata file: {e}")
+    
+    # If we have a TIF file, try to get bounds from it
+    if dem_file.lower().endswith('.tif'):
+        try:
+            # Try to get bounds from the GeoTIFF
+            with rasterio.open(dem_file) as src:
+                bounds = src.bounds
+                return jsonify({
+                    'success': True,
+                    'bounds': {
+                        'min_lat': bounds.bottom,
+                        'min_lon': bounds.left,
+                        'max_lat': bounds.top,
+                        'max_lon': bounds.right
+                    }
+                })
+        except Exception as e:
+            logger.error(f"Error reading GeoTIFF bounds: {e}")
+    
+    # Fallback to Brisbane area if all else fails
+    return jsonify({
+        'success': True,
+        'bounds': {
+            'min_lat': -27.7,
+            'min_lon': 152.5,
+            'max_lat': -27.2,
+            'max_lon': 153.2
+        }
+    })
+
 def get_available_dems():
-    """Get a list of available DEM files with metadata."""
+    """Get a list of available DEMs."""
     dems = []
     
-    metadata_dir = os.path.join(DEM_DIR, 'metadata')
-    os.makedirs(metadata_dir, exist_ok=True)
-    
-    for i, tif_file in enumerate(glob.glob(os.path.join(DEM_DIR, '*.tif'))):
-        try:
-            filename = os.path.basename(tif_file)
-            
-            size_bytes = os.path.getsize(tif_file)
-            size_mb = size_bytes / (1024 * 1024)
-            
-            dem_type = None
-            for key, config in DEM_TYPES.items():
-                if key in filename:
-                    dem_type = key
-                    break
-            
-            if dem_type:
-                resolution = DEM_TYPES[dem_type]['resolution']
-                description = DEM_TYPES[dem_type]['description']
-                type_name = DEM_TYPES[dem_type]['name']
-            else:
-                if '5m' in filename or 'lidar' in filename.lower():
-                    resolution = 5
-                    type_name = '5m LiDAR DEM'
-                elif '1s' in filename or '1sec' in filename:
-                    resolution = 30
-                    type_name = '1 Second National DEM'
-                elif '3s' in filename or '3sec' in filename:
-                    resolution = 90
-                    type_name = '3 Second National DEM'
-                else:
-                    resolution = 'Unknown'
-                    type_name = 'Custom DEM'
+    try:
+        # Get all files in the DEM directory
+        files = os.listdir(DEM_DIR)
+        
+        # Filter for TIF and PNG files
+        dem_files = [f for f in files if f.lower().endswith(('.tif', '.png')) and not f.endswith(('.pgw', '.aux.xml'))]
+        
+        # Sort files by modification time (newest first)
+        dem_files.sort(key=lambda f: os.path.getmtime(os.path.join(DEM_DIR, f)), reverse=True)
+        
+        for i, filename in enumerate(dem_files):
+            try:
+                file_path = os.path.join(DEM_DIR, filename)
                 
-                description = 'Custom Digital Elevation Model'
-            
-            coverage = 'Brisbane Area'
-            if '_' in filename:
+                # Skip if not a file
+                if not os.path.isfile(file_path):
+                    continue
+                
+                # Get file stats
+                file_stats = os.stat(file_path)
+                file_size_bytes = file_stats.st_size
+                file_size_mb = file_size_bytes / (1024 * 1024)
+                
+                # Get file extension and determine data type
+                file_ext = os.path.splitext(filename)[1].lower()
+                data_type = "Elevation Data" if file_ext == '.tif' else "Visualization Image"
+                
+                # Try to extract DEM type from filename
+                dem_type = None
+                for dt in DEM_TYPES:
+                    if filename.startswith(dt):
+                        dem_type = dt
+                        break
+                
+                if not dem_type:
+                    # Default to lidar_5m if can't determine
+                    dem_type = "lidar_5m"
+                
+                # Get DEM resolution from config
+                resolution = DEM_TYPES.get(dem_type, {}).get('resolution', 30)
+                
+                # Try to extract bounding box from filename
+                bbox = None
                 parts = filename.split('_')
-                if len(parts) >= 5:  
+                if len(parts) >= 5:
                     try:
-                        minx = float(parts[-4].replace('p', '.'))
-                        miny = float(parts[-3].replace('p', '.'))
-                        maxx = float(parts[-2].replace('p', '.'))
-                        maxy = float(parts[-1].split('.')[0].replace('p', '.'))
-                        coverage = f"{minx:.2f},{miny:.2f} to {maxx:.2f},{maxy:.2f}"
+                        # Format: dem_type_minx_miny_maxx_maxy.ext
+                        # or: dem_type_minx_miny_maxx_maxy_counter.ext
+                        minx = float(parts[1].replace('p', '.'))
+                        miny = float(parts[2].replace('p', '.'))
+                        
+                        # Check if the fourth part has an extension (in case of no counter)
+                        maxx_part = parts[3]
+                        if '.' in maxx_part:
+                            maxx_part = maxx_part.split('.')[0]
+                        maxx = float(maxx_part.replace('p', '.'))
+                        
+                        # Check if the fifth part has an extension
+                        maxy_part = parts[4]
+                        if '.' in maxy_part:
+                            maxy_part = maxy_part.split('.')[0]
+                        maxy = float(maxy_part.replace('p', '.'))
+                        
+                        bbox = [minx, miny, maxx, maxy]
                     except (ValueError, IndexError):
-                        pass
-            
-            user_name = ""
-            metadata_file = os.path.join(metadata_dir, f"{filename}.json")
-            if os.path.exists(metadata_file):
-                try:
-                    with open(metadata_file, 'r') as f:
-                        metadata = json.load(f)
-                    user_name = metadata.get('display_name', "")
-                except Exception as e:
-                    logger.error(f"Error reading metadata for {filename}: {e}")
-            
-            display_name = user_name if user_name else type_name
-            
-            dems.append({
-                'id': str(i),
-                'name': filename,
-                'display_name': display_name,
-                'user_name': user_name,
-                'type_name': type_name,
-                'resolution': resolution,
-                'coverage': coverage,
-                'size': f"{size_mb:.1f} MB",
-                'size_bytes': size_bytes,
-                'description': description
-            })
-        except Exception as e:
-            logger.exception(f"Error processing DEM file {tif_file}")
-    
-    dems.sort(key=lambda x: x.get('size_bytes', 0), reverse=True)
+                        bbox = None
+                
+                # If couldn't extract bbox from filename, try to get from metadata
+                if not bbox:
+                    if file_ext == '.tif':
+                        try:
+                            # Try to get bounds from the GeoTIFF
+                            with rasterio.open(file_path) as src:
+                                bounds = src.bounds
+                                bbox = [bounds.left, bounds.bottom, bounds.right, bounds.top]
+                        except Exception as e:
+                            logger.warning(f"Could not extract bounds from GeoTIFF: {e}")
+                            bbox = [152.0, -28.0, 153.5, -27.0]  # Default to Brisbane area
+                    else:
+                        # For PNG files, check if there's a world file (.pgw)
+                        world_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}.pgw")
+                        if os.path.exists(world_file):
+                            try:
+                                with open(world_file, 'r') as f:
+                                    lines = f.readlines()
+                                    if len(lines) >= 6:
+                                        pixel_width = float(lines[0])
+                                        pixel_height = float(lines[3])
+                                        top_left_x = float(lines[4])
+                                        top_left_y = float(lines[5])
+                                        
+                                        # Get image dimensions
+                                        from PIL import Image
+                                        img = Image.open(file_path)
+                                        width, height = img.size
+                                        
+                                        # Calculate bounds
+                                        minx = top_left_x
+                                        maxx = top_left_x + (width * pixel_width)
+                                        miny = top_left_y + (height * pixel_height)
+                                        maxy = top_left_y
+                                        
+                                        bbox = [minx, miny, maxx, maxy]
+                            except Exception as e:
+                                logger.warning(f"Could not extract bounds from world file: {e}")
+                                bbox = [152.0, -28.0, 153.5, -27.0]  # Default to Brisbane area
+                        else:
+                            bbox = [152.0, -28.0, 153.5, -27.0]  # Default to Brisbane area
+                
+                # Format the bounding box for display
+                coverage = f"{bbox[0]:.4f}, {bbox[1]:.4f} to {bbox[2]:.4f}, {bbox[3]:.4f}"
+                
+                # Check for a status file to get the display name
+                status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
+                display_name = DEM_TYPES.get(dem_type, {}).get('name', 'Unknown DEM')
+                
+                if os.path.exists(status_file):
+                    try:
+                        with open(status_file, 'r') as f:
+                            status_data = json.load(f)
+                            if 'display_name' in status_data:
+                                display_name = status_data['display_name']
+                    except Exception as e:
+                        logger.warning(f"Could not read status file for {filename}: {e}")
+                
+                # Create DEM object
+                dem = {
+                    'id': str(i + 1),
+                    'name': filename,
+                    'display_name': display_name,
+                    'type': dem_type,
+                    'resolution': resolution,
+                    'coverage': coverage,
+                    'bbox': bbox,
+                    'data_type': data_type,
+                    'size': f"{file_size_mb:.2f} MB",
+                    'date': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_stats.st_mtime))
+                }
+                
+                dems.append(dem)
+            except Exception as e:
+                logger.exception(f"Error processing DEM file {filename}: {e}")
+    except Exception as e:
+        logger.exception(f"Error listing DEMs: {e}")
     
     return dems
 
