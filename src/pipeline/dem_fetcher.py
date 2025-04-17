@@ -8,17 +8,21 @@ It provides a unified interface for fetching digital elevation models in differe
 import os
 import logging
 import sys
-import inspect
 
 # Add the project root to the Python path to ensure imports work correctly
-current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # Import handlers
-from src.pipeline.wms_rgb_handler import fetch_rgb_dem
-from src.pipeline.wcs_geotiff_handler import fetch_geotiff_dem
+try:
+    from src.pipeline.wms_rgb_handler import fetch_rgb_dem
+    from src.pipeline.wcs_geotiff_handler import fetch_geotiff_dem
+except ImportError:
+    # Attempt relative import if absolute import fails
+    from .wms_rgb_handler import fetch_rgb_dem
+    from .wcs_geotiff_handler import fetch_geotiff_dem
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -46,10 +50,8 @@ class DEMFetcher:
         self.rgb_dir = os.path.join(base_dir, 'rgb')
         self.rgb_tiles_dir = os.path.join(base_dir, 'rgb', 'tiles')
         
-        # Create directories if they don't exist
-        os.makedirs(self.raw_dir, exist_ok=True)
-        os.makedirs(self.rgb_dir, exist_ok=True)
-        os.makedirs(self.rgb_tiles_dir, exist_ok=True)
+        # Ensure only the base directory exists
+        os.makedirs(self.base_dir, exist_ok=True)
         
         logger.info(f"DEM Fetcher initialized with base directory: {base_dir}")
     

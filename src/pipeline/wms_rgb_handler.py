@@ -10,10 +10,14 @@ import argparse
 import math
 import sys
 
-# Directory constants
-BASE_DATA_DIR = "data/geo"
-RGB_DIR = os.path.join(BASE_DATA_DIR, "rgb")
-TILES_DIR = os.path.join(BASE_DATA_DIR, "tiles")  # Changed from RGB_DIR/tiles to BASE_DATA_DIR/tiles
+# Directory constants - use absolute paths for reliability
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DATA_DIR = os.path.join(BASE_DIR, "data", "geo")
+TILES_DIR = os.path.join(BASE_DATA_DIR, "tiles")
+
+# Ensure necessary directories exist
+os.makedirs(BASE_DATA_DIR, exist_ok=True)
+os.makedirs(TILES_DIR, exist_ok=True)
 
 def setup_config(dataset_choice=None):
     """Configure the WMS endpoints and parameters
@@ -338,8 +342,7 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
         os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
     else:
         # Ensure the RGB directory exists only if we're using it
-        os.makedirs(RGB_DIR, exist_ok=True)
-        png_file = os.path.join(RGB_DIR, f"{short_name}.png")
+        png_file = os.path.join(BASE_DATA_DIR, f"{short_name}.png")
     
     # Save as PNG for web-friendly format with transparency
     pil_img = Image.fromarray(stitched_array)
@@ -348,7 +351,7 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
 
     # Write world file for PNG
     if not output_path:
-        png_world_file = os.path.join(RGB_DIR, f"{short_name}.pgw")
+        png_world_file = os.path.join(BASE_DATA_DIR, f"{short_name}.pgw")
     else:
         png_world_file = output_path.replace('.png', '.pgw')
     
@@ -364,7 +367,7 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     
     # Create a small info file
     if not output_path:
-        info_file = os.path.join(RGB_DIR, f"{short_name}_info.json")
+        info_file = os.path.join(BASE_DATA_DIR, f"{short_name}_info.json")
     else:
         info_file = output_path.replace('.png', '_info.json')
     

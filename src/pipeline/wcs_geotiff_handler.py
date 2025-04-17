@@ -5,9 +5,12 @@ from owslib.wcs import WebCoverageService
 import rasterio
 import sys
 
-# Directory constants
-BASE_DATA_DIR = "data/geo"
-RAW_DIR = os.path.join(BASE_DATA_DIR, "raw")
+# Directory constants - use absolute paths for reliability
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DATA_DIR = os.path.join(BASE_DIR, "data", "geo")
+
+# Ensure base data directory exists
+os.makedirs(BASE_DATA_DIR, exist_ok=True)
 
 def validate_geotiff(file_path):
     """Reads a GeoTIFF file using rasterio and prints its metadata."""
