@@ -28,3 +28,6 @@ whitenoise==6.5.0
 fastparquet==2023.7.0
 sqlalchemy==2.0.20
 geoalchemy2==0.14.0
+owslib==0.29.2
+pillow==10.0.0
+tifffile==2023.7.10

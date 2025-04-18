@@ -24,10 +24,8 @@ if project_root not in sys.path:
 log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
 os.makedirs(log_dir, exist_ok=True)
 
-# Clear existing handlers to avoid duplication
+# Initialize the logger
 logger = logging.getLogger(__name__)
-logger.handlers = []
-logging.root.handlers = []
 
 # Set up basic logging configuration
 logging.basicConfig(
@@ -253,7 +251,6 @@ def fetch_dem_api():
             with open(status_file, 'w') as f:
                 json.dump({
                     'status': 'starting',
-                    'progress': 0,
                     'message': 'Initializing DEM download...',
                     'timestamp': time.time(),
                     'display_name': display_name,
@@ -292,10 +289,7 @@ def fetch_dem_api():
                             # Create a fresh status data if the file is corrupted
                             status_data = {
                                 'status': 'starting',
-                                'progress': 0,
                                 'message': 'Initializing...',
-                                'details': 'Starting DEM download process...',
-                                'logs': [],
                                 'timestamp': time.time(),
                                 'display_name': dem_name or dem_type,
                                 'dataType': data_type
@@ -307,10 +301,7 @@ def fetch_dem_api():
                             # Create a fresh status data if the file can't be read
                             status_data = {
                                 'status': 'starting',
-                                'progress': 0,
                                 'message': 'Initializing...',
-                                'details': 'Starting DEM download process...',
-                                'logs': [],
                                 'timestamp': time.time(),
                                 'display_name': dem_name or dem_type,
                                 'dataType': data_type
@@ -326,10 +317,7 @@ def fetch_dem_api():
                             with open(status_file, 'w') as f:
                                 json.dump({
                                     'status': 'downloading',
-                                    'progress': 5,
                                     'message': 'Starting DEM download...',
-                                    'details': 'Initializing DEM download process...',
-                                    'logs': [],
                                     'timestamp': time.time(),
                                     'display_name': display_name,
                                     'dataType': thread_data_type 
@@ -338,8 +326,7 @@ def fetch_dem_api():
                             logger.error(f"Error writing to status file: {e}")
                 except filelock.Timeout:
                     logger.error(f"Could not acquire lock for status file: {status_file}")
-                    return
-                
+                    
                 # Set up temporary log handler for this thread
                 status_handler = logging.FileHandler(status_file + ".log")
                 thread_logger = logging.getLogger('dem_fetch')
@@ -405,9 +392,7 @@ def fetch_dem_api():
                                 with open(status_file, 'w') as f:
                                     json.dump({
                                         'status': 'downloading',
-                                        'progress': 10,
                                         'message': 'Fetching DEM data...',
-                                        'details': f'Fetching {thread_data_type} DEM data for {dem_type}...',
                                         'timestamp': time.time(),
                                         'display_name': display_name,
                                         'dataType': thread_data_type,
@@ -419,9 +404,7 @@ def fetch_dem_api():
                                 with open(status_file, 'w') as f:
                                     json.dump({
                                         'status': 'downloading',
-                                        'progress': 10,
                                         'message': 'Fetching DEM data...',
-                                        'details': f'Fetching {thread_data_type} DEM data for {dem_type}...',
                                         'timestamp': time.time(),
                                         'display_name': display_name,
                                         'dataType': thread_data_type,
@@ -464,7 +447,6 @@ def fetch_dem_api():
                                     
                                     status_data.update({
                                         'status': 'complete',
-                                        'progress': 100,
                                         'message': 'DEM download complete',
                                         'timestamp': time.time()
                                     })
@@ -477,7 +459,6 @@ def fetch_dem_api():
                                     with open(status_file, 'w') as f:
                                         json.dump({
                                             'status': 'complete',
-                                            'progress': 100,
                                             'message': 'DEM download complete',
                                             'timestamp': time.time(),
                                             'display_name': display_name,
@@ -503,7 +484,6 @@ def fetch_dem_api():
                                     
                                     status_data.update({
                                         'status': 'error', 
-                                        'progress': 100, 
                                         'message': f"Error: {result.get('message', '')}",
                                         'timestamp': time.time(),
                                         'display_name': display_name,
@@ -519,7 +499,6 @@ def fetch_dem_api():
                                     with open(status_file, 'w') as f:
                                         json.dump({
                                             'status': 'error', 
-                                            'progress': 100, 
                                             'message': f"Error: {result.get('message', '')}",
                                             'timestamp': time.time(),
                                             'display_name': display_name,
@@ -548,7 +527,6 @@ def fetch_dem_api():
                             with open(status_file, 'w') as f:
                                 json.dump({
                                     'status': 'error',
-                                    'progress': 100,
                                     'message': f"Error: {str(e)}",
                                     'timestamp': time.time(),
                                     'display_name': dem_name or dem_type,
@@ -663,7 +641,11 @@ def check_dem_status(filename):
                 with open(status_file, 'r') as f:
                     status_data = json.load(f)
                 
-                logger.info(f"DEM status check for {filename}: {status_data.get('status', 'unknown')} - {status_data.get('progress', 0)}% - {status_data.get('message', 'No message')}")
+                # Only show percentage in logs for completed status
+                if status_data.get('status') == 'completed' or status_data.get('status') == 'complete':
+                    logger.info(f"DEM status check for {filename}: completed - {status_data.get('message', 'No message')}")
+                else:
+                    logger.info(f"DEM status check for {filename}: {status_data.get('status', 'unknown')} - {status_data.get('message', 'No message')}")
                 
                 # Check if the DEM file exists
                 dem_file_path = os.path.join(DEM_DIR, filename)
@@ -680,7 +662,6 @@ def check_dem_status(filename):
                     # If the file exists but status is not 'completed', update it
                     if status_data.get('status') != 'completed':
                         status_data['status'] = 'completed'
-                        status_data['progress'] = 100
                         status_data['message'] = 'DEM download completed successfully'
                         
                         with open(status_file, 'w') as f:
@@ -699,7 +680,6 @@ def check_dem_status(filename):
                     'success': True,
                     'status': {
                         'status': status_mapping.get(status_data.get('status', 'unknown'), 'unknown'),
-                        'progress': status_data.get('progress', 0),
                         'message': status_data.get('message', 'No status message available')
                     },
                     'status_data': status_data
@@ -722,7 +702,6 @@ def check_dem_status(filename):
                 
                 status_data = {
                     'status': 'completed',
-                    'progress': 100,
                     'message': 'DEM file exists',
                     'timestamp': time.time(),
                     'file_path': dem_file_path,
@@ -738,7 +717,6 @@ def check_dem_status(filename):
                     'success': True,
                     'status': {
                         'status': 'complete',
-                        'progress': 100,
                         'message': 'DEM file exists'
                     },
                     'status_data': status_data
@@ -911,82 +889,6 @@ def get_system_info():
         logger.exception("Error getting system info")
         return jsonify({'success': False, 'message': str(e)})
 
-@app.route('/api/file-locks/<filename>')
-def check_file_locks(filename):
-    """Check what processes are locking a specific file."""
-    try:
-        filename = secure_filename(filename)
-        file_path = os.path.join(DEM_DIR, filename)
-        
-        if not os.path.exists(file_path):
-            return jsonify({'success': False, 'message': f'File {filename} not found'})
-        
-        import psutil
-        import platform
-        
-        locks_info = {
-            'filename': filename,
-            'path': file_path,
-            'size': os.path.getsize(file_path),
-            'last_modified': time.ctime(os.path.getmtime(file_path)),
-            'processes': [],
-            'system': platform.system()
-        }
-        
-        for proc in psutil.process_iter(['pid', 'name', 'username', 'cmdline', 'open_files']):
-            try:
-                proc_info = proc.info
-                open_files = proc_info.get('open_files', [])
-                
-                if open_files:
-                    for open_file in open_files:
-                        if open_file and hasattr(open_file, 'path') and file_path.lower() in open_file.path.lower():
-                            locks_info['processes'].append({
-                                'pid': proc_info['pid'],
-                                'name': proc_info['name'],
-                                'username': proc_info.get('username', 'unknown'),
-                                'cmdline': ' '.join(proc_info.get('cmdline', [])),
-                                'file_mode': getattr(open_file, 'mode', 'unknown')
-                            })
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                pass
-        
-        if platform.system() == 'Windows':
-            try:
-                import subprocess
-                handle_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools', 'handle.exe')
-                
-                if os.path.exists(handle_path):
-                    cmd = [handle_path, file_path, '/accepteula']
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                    
-                    if result.returncode == 0:
-                        locks_info['handle_output'] = result.stdout
-                    else:
-                        locks_info['handle_error'] = result.stderr
-                else:
-                    locks_info['handle_status'] = 'handle.exe not found'
-            except Exception as e:
-                locks_info['handle_error'] = str(e)
-        
-        try:
-            with open(file_path, 'rb') as f:
-                f.read(1)
-            locks_info['can_open'] = True
-        except Exception as e:
-            locks_info['can_open'] = False
-            locks_info['open_error'] = str(e)
-        
-        return jsonify({'success': True, 'locks_info': locks_info})
-    except Exception as e:
-        logger.exception(f"Error checking file locks for {filename}")
-        return jsonify({'success': False, 'message': str(e)})
-
-@app.route('/logs')
-def view_logs():
-    """Render the logs viewer page."""
-    return render_template('logs.html')
-
 @app.route('/api/logs/app')
 def get_app_logs():
     """Get application logs."""
@@ -995,6 +897,9 @@ def get_app_logs():
         if os.path.exists(log_file):
             with open(log_file, 'r') as f:
                 logs = f.readlines()
+            
+            # Return all logs without filtering - let frontend handle filtering
+            # Return only the last 1000 entries to avoid excessive payload size
             logs = logs[-1000:]
             return jsonify({'success': True, 'logs': logs})
         else:
@@ -1039,6 +944,19 @@ def get_dem_logs():
     except Exception as e:
         logger.exception(f"Error retrieving DEM logs")
         return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/logs/filter/status', methods=['GET'])
+def get_log_filtering_status():
+    """Get the current status of log filtering."""
+    return jsonify({
+        'success': True,
+        'filter_status': False
+    })
+
+@app.route('/logs')
+def view_logs():
+    """Render the logs viewer page."""
+    return render_template('logs.html')
 
 @app.route('/api/get-dem-bounds/<dem_id>', methods=['GET'])
 def get_dem_bounds(dem_id):

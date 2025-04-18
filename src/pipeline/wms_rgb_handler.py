@@ -363,8 +363,6 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
         wf.write(f"{bbox['min_lon']}\n")  # x upper left
         wf.write(f"{bbox['max_lat']}\n")  # y upper left
 
-    print(f"World file saved as {png_world_file}")
-    
     # Create a small info file
     if not output_path:
         info_file = os.path.join(BASE_DATA_DIR, f"{short_name}_info.json")
@@ -471,31 +469,32 @@ def fetch_rgb_dem(bbox, dem_type, resolution=None, output_file=None):
     Returns:
         dict: Result of the operation with success status and file path
     """
-    # Map dem_type to the appropriate WMS URL and configuration
-    dem_configs = {
-        'national_1s': {
-            'url': 'https://services.ga.gov.au/gis/services/DEM_SRTM_1Second_Hydro_Enforced_2024/MapServer/WMSServer',
-            'name': 'DEM_SRTM_1Second_Hydro_Enforced_2024',
-            'description': 'SRTM 1 Second Hydro Enforced DEM'
-        },
-        'lidar_5m': {
-            'url': 'https://services.ga.gov.au/gis/services/DEM_LiDAR_5m_2025/MapServer/WMSServer',
-            'name': 'DEM_LiDAR_5m_2025',
-            'description': 'LiDAR 5m DEM'
-        }
-    }
-    
-    if dem_type not in dem_configs:
-        return {
-            'success': False,
-            'message': f"Unknown DEM type: {dem_type}"
-        }
-    
-    dem_config = dem_configs[dem_type]
-    wms_url = dem_config['url']
-    dataset_name = dem_config['name']
-    
     try:
+        # Map dem_type to the appropriate WMS URL and configuration
+        dem_configs = {
+            'national_1s': {
+                'url': 'https://services.ga.gov.au/gis/services/DEM_SRTM_1Second_Hydro_Enforced_2024/MapServer/WMSServer',
+                'name': 'DEM_SRTM_1Second_Hydro_Enforced_2024',
+                'description': 'SRTM 1 Second Hydro Enforced DEM'
+            },
+            'lidar_5m': {
+                'url': 'https://services.ga.gov.au/gis/services/DEM_LiDAR_5m_2025/MapServer/WMSServer',
+                'name': 'DEM_LiDAR_5m_2025',
+                'description': 'LiDAR 5m DEM'
+            }
+        }
+        
+        if dem_type not in dem_configs:
+            return {
+                'success': False,
+                'message': f"Unknown DEM type: {dem_type}",
+                'file_path': None
+            }
+        
+        dem_config = dem_configs[dem_type]
+        wms_url = dem_config['url']
+        dataset_name = dem_config['name']
+        
         # Determine output file path
         if output_file:
             file_name = output_file
@@ -539,19 +538,21 @@ def fetch_rgb_dem(bbox, dem_type, resolution=None, output_file=None):
         if not success:
             return {
                 'success': False,
-                'message': f"Failed to stitch tiles for {dataset_name}"
+                'message': f"Failed to stitch tiles for {dataset_name}: {message}",
+                'file_path': None
             }
         
         return {
             'success': True,
-            'message': 'Successfully fetched RGB DEM visualization',
+            'message': f"Successfully fetched RGB DEM: {message}",
             'file_path': file_path
         }
     
     except Exception as e:
         return {
             'success': False,
-            'message': f"Error fetching RGB DEM visualization: {str(e)}"
+            'message': f"Error fetching RGB DEM visualization: {str(e)}",
+            'file_path': None
         }
 
 def main():
