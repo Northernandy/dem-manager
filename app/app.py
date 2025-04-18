@@ -58,6 +58,12 @@ try:
         """
         logger.info(f"Fetching DEM: {dem_type}, {data_type}, bbox={bbox}")
         
+        # Add data_type prefix to output_file if provided
+        if output_file:
+            base, ext = os.path.splitext(output_file)
+            if not base.startswith(f"{data_type}_"):
+                output_file = f"{data_type}_{base}{ext}"
+        
         # Redirect stdout to capture print statements from handlers
         from io import StringIO
         import sys
@@ -221,7 +227,7 @@ def fetch_dem_api():
         file_extension = '.tif' if data_type == 'raw' else '.png'
         
         bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
-        base_output_file = f"{dem_type}_{bbox_str}{file_extension}" 
+        base_output_file = f"{data_type}_{dem_type}_{bbox_str}{file_extension}" 
         
         output_file = base_output_file
         output_path = os.path.join(DEM_DIR, output_file)
@@ -229,7 +235,7 @@ def fetch_dem_api():
         if os.path.exists(output_path):
             counter = 1
             while True:
-                output_file = f"{dem_type}_{bbox_str}_{counter}{file_extension}" 
+                output_file = f"{data_type}_{dem_type}_{bbox_str}_{counter}{file_extension}" 
                 output_path = os.path.join(DEM_DIR, output_file)
                 if not os.path.exists(output_path):
                     break

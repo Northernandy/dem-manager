@@ -75,7 +75,13 @@ class DEMFetcher:
         if not output_file:
             bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
             file_ext = f".{RAW_FORMAT}" if data_type == 'raw' else f".{RGB_FORMAT}"
-            output_file = f"{dem_type}_{bbox_str}{file_ext}"
+            # Add data_type prefix to differentiate between raw and RGB files
+            output_file = f"{data_type}_{dem_type}_{bbox_str}{file_ext}"
+        else:
+            # If output_file is provided, ensure it has the data_type prefix
+            base, ext = os.path.splitext(output_file)
+            if not base.startswith(f"{data_type}_"):
+                output_file = f"{data_type}_{base}{ext}"
         
         # Ensure the file extension matches the data type
         base, ext = os.path.splitext(output_file)
