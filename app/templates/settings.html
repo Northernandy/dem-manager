@@ -26,20 +26,39 @@
             padding-bottom: 0;
             min-height: 40px;
             height: 40px;
+            background-color: #333333 !important; /* Dark grey header */
         }
         .navbar-brand {
             padding-top: 0;
             padding-bottom: 0;
-            font-size: 1rem;
+            font-size: 2.25rem; /* 50% larger than original 1.5rem */
+            color: white !important;
         }
         .nav-link {
             padding-top: 0.25rem;
             padding-bottom: 0.25rem;
+            font-size: 0.9rem; /* Smaller menu items */
+            color: rgba(255, 255, 255, 0.85) !important; /* White text for menu items */
+        }
+        .nav-link:hover {
+            color: white !important;
+        }
+        
+        /* Tab styling */
+        .nav-tabs .nav-link {
+            color: #000 !important;
+            font-weight: normal;
+        }
+        .nav-tabs .nav-link.active {
+            background-color: #0d6efd;
+            color: white !important;
+            font-weight: bold;
+            border-color: #0d6efd;
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">Brisbane Flood Visualization</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -53,6 +72,9 @@
                     <li class="nav-item">
                         <a class="nav-link active" href="/settings">Settings</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">Logs</a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -61,8 +83,19 @@
     <div class="container mt-4">
         <h1>Settings</h1>
         
-        <!-- Alert messages -->
-        <div id="alert-container"></div>
+        <!-- Reserved space for alerts with fixed height -->
+        <div id="alert-container" style="min-height: 60px;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
         
         <!-- Tabs for different settings sections -->
         <ul class="nav nav-tabs mb-4" id="settings-tabs" role="tablist">
@@ -101,13 +134,13 @@
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="downloadDataType" id="downloadDataTypeRaw" value="raw" checked>
                                         <label class="form-check-label" for="downloadDataTypeRaw">
-                                            Raw DEM Data (.tif)
+                                            Elevation Data (.tif)
                                         </label>
                                     </div>
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="downloadDataType" id="downloadDataTypeRgb" value="rgb">
                                         <label class="form-check-label" for="downloadDataTypeRgb">
-                                            RGB Image (.png)
+                                            Visualization Image (.png)
                                         </label>
                                     </div>
                                 </div>
@@ -134,16 +167,16 @@
                                         </div>
                                     </div>
                                     <div class="form-text">Default is wider Brisbane catchment area including Wivenhoe Dam.</div>
+                                    <button id="load-default-bbox" class="btn btn-sm btn-outline-secondary mt-2">Load Default Bounding Box</button>
                                 </div>
                                 <button type="submit" class="btn btn-primary w-100" id="fetch-dem-btn">Fetch DEM Data</button>
                                 
-                                <!-- Progress container will be added here -->
-                                <div id="fetch-progress-container" class="mt-3 d-none">
-                                    <div class="progress mb-2">
-                                        <div id="fetch-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
-                                             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                                <!-- Progress container with reserved space for logs -->
+                                <div id="fetch-progress-container" class="mt-3">
+                                    <!-- Add log display area with min-height to reserve space -->
+                                    <div id="fetch-logs-container" class="mt-2" style="min-height: 100px;">
+                                        <pre id="fetch-logs" class="bg-dark text-light p-2 rounded user-select-all" style="max-height: 400px; min-height: 100px; overflow-y: auto; font-family: monospace; font-size: 0.7rem; line-height: 1.1; display: none;"></pre>
                                     </div>
-                                    <div id="fetch-status-message" class="small text-muted">Initializing...</div>
                                 </div>
                             </form>
                         </div>
@@ -165,7 +198,8 @@
                                             <p class="card-text">
                                                 <small>Resolution: {{ dem.resolution }}m</small><br>
                                                 <small>Coverage: {{ dem.coverage }}</small><br>
-                                                <small>Size: {{ dem.size }}</small>
+                                                <small>Size: {{ dem.size }}</small><br>
+                                                <small>Type: <span class="badge {% if dem.data_type == 'Raw DEM Data' %}bg-success{% else %}bg-primary{% endif %}">{% if dem.data_type == 'Raw DEM Data' %}Elevation Data{% else %}Visualization Image{% endif %}</span></small>
                                             </p>
                                             <div class="d-flex justify-content-between">
                                                 <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="{{ dem.name }}">Delete</button>
@@ -222,6 +256,31 @@
                                 <option value="street">Street Map</option>
                                 <option value="topo">Topographic Map</option>
                             </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Default DEM Bounding Box</label>
+                            <div class="row g-2 mb-1">
+                                <div class="col-6">
+                                    <label class="form-label small">Min X (Longitude)</label>
+                                    <input type="number" class="form-control" id="default-minx" placeholder="Min X" step="0.1" value="152.0">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Min Y (Latitude)</label>
+                                    <input type="number" class="form-control" id="default-miny" placeholder="Min Y" step="0.1" value="-28.0">
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Max X (Longitude)</label>
+                                    <input type="number" class="form-control" id="default-maxx" placeholder="Max X" step="0.1" value="153.5">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Max Y (Latitude)</label>
+                                    <input type="number" class="form-control" id="default-maxy" placeholder="Max Y" step="0.1" value="-27.0">
+                                </div>
+                            </div>
+                            <div class="form-text">Default bounding box for DEM fetching (Brisbane catchment area).</div>
                         </div>
                         
                         <div class="d-grid">
@@ -474,7 +533,7 @@
 
             // Validate inputs
             if (isNaN(minX) || isNaN(minY) || isNaN(maxX) || isNaN(maxY)) {
-                showAlert('Please enter valid coordinates for the bounding box.', 'alert-danger');
+                showAlert('Please enter valid coordinates for the bounding box.', 'danger');
                 return;
             }
             
@@ -493,15 +552,10 @@
             const progressContainer = document.getElementById('fetch-progress-container');
             progressContainer.classList.remove('d-none');
             
-            // Reset progress bar
-            const progressBar = document.getElementById('fetch-progress-bar');
-            progressBar.style.width = '0%';
-            progressBar.setAttribute('aria-valuenow', 0);
-            progressBar.textContent = '0%';
-            
-            // Reset status message
-            const statusMessage = document.getElementById('fetch-status-message');
-            statusMessage.textContent = 'Initializing...';
+            // Clear previous logs
+            const logsElement = document.getElementById('fetch-logs');
+            logsElement.textContent = '';
+            logsElement.style.display = 'block';
             
             // Make API request
             fetch('/api/fetch-dem', {
@@ -526,7 +580,7 @@
                     }
                     
                     // Otherwise, start polling for status updates
-                    const filename = data.file;
+                    const filename = data.filename;
                     Logger.info(`DEM fetch initiated: ${filename}`);
                     startStatusPolling(filename);
                 } else {
@@ -545,72 +599,61 @@
                     success: false,
                     message: 'Error fetching DEM: ' + error.message
                 });
+                showAlert(`Error fetching DEM: ${error.message}`, 'danger');
             });
         }
         
         // Function to poll for status updates
         function startStatusPolling(filename) {
-            const progressBar = document.getElementById('fetch-progress-bar');
-            const statusMessage = document.getElementById('fetch-status-message');
+            const logsElement = document.getElementById('fetch-logs');
             
-            // Update initial status
-            statusMessage.textContent = 'Starting DEM download...';
-            
-            // Add debug info to help troubleshoot
-            Logger.info(`Starting status polling for: ${filename}`);
+            // Make sure the log element is visible
+            logsElement.style.display = 'block';
             
             // Poll every second
             const pollInterval = setInterval(() => {
                 fetch(`/api/check-dem-status/${filename}`)
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
+                            throw new Error(`Network response was not ok: ${response.status}`);
                         }
                         return response.json();
                     })
                     .then(data => {
-                        // Log raw response for debugging
-                        Logger.debug(`Status check response: ${JSON.stringify(data)}`);
-                        
                         if (data.success) {
-                            const status = data.status;
+                            const statusData = data.status_data;
                             
-                            // Update progress bar
-                            progressBar.style.width = `${status.progress}%`;
-                            progressBar.setAttribute('aria-valuenow', status.progress);
-                            progressBar.textContent = `${Math.round(status.progress)}%`;
+                            // Update logs if available
+                            if (statusData.logs && statusData.logs.length > 0) {
+                                logsElement.textContent = statusData.logs.join('\n');
+                                
+                                // Auto-scroll to bottom
+                                logsElement.scrollTop = logsElement.scrollHeight;
+                            }
                             
-                            // Update status message with detailed information
-                            statusMessage.textContent = status.message;
-                            
-                            // Add detailed status to logs
-                            Logger.info(`DEM Status Update: ${status.status} - ${status.progress}% - ${status.message}`);
-                            
-                            // Check if download is complete or failed
-                            if (status.status === 'complete') {
+                            // Check if the download is complete or failed
+                            if (statusData.status === 'complete' || statusData.status === 'completed') {
                                 clearInterval(pollInterval);
                                 completeDownload({
                                     success: true,
-                                    message: status.message || 'DEM fetched successfully',
-                                    file: filename
+                                    message: 'DEM download completed successfully',
+                                    filename: filename
                                 });
-                            } else if (status.status === 'failed') {
+                            } else if (statusData.status === 'error') {
                                 clearInterval(pollInterval);
                                 completeDownload({
                                     success: false,
-                                    message: 'Failed to fetch DEM: ' + (status.message || 'Unknown error')
+                                    message: statusData.message || 'An error occurred during DEM download'
                                 });
                             }
                         } else {
                             // Error checking status
                             const errorMsg = 'Error checking status: ' + data.message;
-                            statusMessage.textContent = errorMsg;
                             Logger.error(errorMsg);
                         }
                     })
                     .catch(error => {
                         const errorMsg = 'Error checking status: ' + error.message;
-                        statusMessage.textContent = errorMsg;
                         Logger.error(errorMsg);
                     });
             }, 1000);
@@ -626,22 +669,180 @@
             fetchBtn.disabled = false;
             fetchBtn.textContent = 'Fetch DEM Data';
             
-            // Remove progress container after a delay
+            // Only hide the progress container but keep the logs visible
             setTimeout(() => {
-                if (document.getElementById('fetch-progress-container')) {
-                    document.getElementById('fetch-progress-container').classList.add('d-none');
+                const progressContainer = document.getElementById('fetch-progress-container');
+                if (progressContainer) {
+                    // Remove d-none class if it was added
+                    progressContainer.classList.remove('d-none');
+                    
+                    // Make sure logs remain visible
+                    const logsElement = document.getElementById('fetch-logs');
+                    if (logsElement) {
+                        logsElement.style.display = 'block';
+                    }
                 }
             }, 3000);
             
             // Show result
-            let alertClass = data.success ? 'alert-success' : 'alert-danger';
-            showAlert(data.message, alertClass);
+            let type = data.success ? 'success' : 'danger';
+            showAlert(data.message, type);
             
             // Refresh the DEMs list if successful
             if (data.success) {
                 refreshDEMsList();
             }
         }
+        
+        // Function to refresh the DEMs list
+        function refreshDEMsList() {
+            fetch('/api/list-dems')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const demsContainer = document.getElementById('dems-container');
+                        
+                        if (data.dems.length === 0) {
+                            demsContainer.innerHTML = '<div class="alert alert-info">No DEMs available. Fetch a DEM to get started.</div>';
+                            return;
+                        }
+                        
+                        let html = '';
+                        data.dems.forEach(dem => {
+                            html += `
+                                <div class="card dem-card" data-dem-id="${dem.id}">
+                                    <div class="card-body">
+                                        <h5 class="card-title">${dem.display_name}</h5>
+                                        <h6 class="card-subtitle mb-2 text-muted">${dem.name}</h6>
+                                        <p class="card-text">
+                                            <small>Resolution: ${dem.resolution}m</small><br>
+                                            <small>Coverage: ${dem.coverage}</small><br>
+                                            <small>Size: ${dem.size}</small><br>
+                                            <small>Type: <span class="badge ${dem.data_type === 'raw' ? 'bg-success' : 'bg-primary'}">${dem.data_type === 'raw' ? 'Elevation Data' : 'Visualization Image'}</span></small>
+                                        </p>
+                                        <div class="d-flex justify-content-between">
+                                            <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="${dem.name}">Delete</button>
+                                            <a href="/" class="btn btn-sm btn-outline-primary view-dem-btn" data-dem-id="${dem.id}">View on Map</a>
+                                        </div>
+                                        <div class="d-flex justify-content-between mt-2">
+                                            <button class="btn btn-sm btn-outline-secondary rename-dem-btn" data-dem-filename="${dem.name}" data-dem-display-name="${dem.display_name}">Rename</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        demsContainer.innerHTML = html;
+                        
+                        // Attach event listeners to the newly created buttons
+                        attachDemButtonEventListeners();
+                    }
+                })
+                .catch(error => {
+                    showAlert('Error refreshing DEMs list: ' + error.message, 'danger');
+                });
+        }
+        
+        // Function to attach event listeners to DEM buttons
+        function attachDemButtonEventListeners() {
+            // Attach event listeners to rename buttons
+            document.querySelectorAll('.rename-dem-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const filename = this.dataset.demFilename;
+                    const currentName = this.dataset.demDisplayName;
+                    
+                    // Create a modal for renaming
+                    const modalId = 'renameModal' + Date.now();
+                    const modal = document.createElement('div');
+                    modal.className = 'modal fade';
+                    modal.id = modalId;
+                    modal.setAttribute('tabindex', '-1');
+                    modal.setAttribute('aria-hidden', 'true');
+                    
+                    modal.innerHTML = `
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Rename DEM</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="rename-form-${modalId}">
+                                        <div class="mb-3">
+                                            <label for="new-name-${modalId}" class="form-label">New Display Name</label>
+                                            <input type="text" class="form-control" id="new-name-${modalId}" value="${currentName}" required>
+                                            <div class="form-text">Original filename: ${filename}</div>
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" form="rename-form-${modalId}" class="btn btn-primary">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(modal);
+                    
+                    // Show the modal
+                    const modalObj = new bootstrap.Modal(modal);
+                    modalObj.show();
+                    
+                    // Handle form submission
+                    document.getElementById(`rename-form-${modalId}`).addEventListener('submit', function(event) {
+                        event.preventDefault();
+                        
+                        const newName = document.getElementById(`new-name-${modalId}`).value;
+                        
+                        if (!newName) {
+                            return;
+                        }
+                        
+                        // Send rename request
+                        fetch('/api/rename-dem', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                filename: filename,
+                                display_name: newName
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            // Hide modal
+                            modalObj.hide();
+                            
+                            // Show result
+                            let type = data.success ? 'success' : 'danger';
+                            showAlert(data.message, type);
+                            
+                            // Refresh the DEMs list if successful
+                            if (data.success) {
+                                refreshDEMsList();
+                            }
+                        })
+                        .catch(error => {
+                            // Hide modal
+                            modalObj.hide();
+                            
+                            // Show error
+                            showAlert('Error: ' + error.message, 'danger');
+                        });
+                    });
+                    
+                    // Remove modal from DOM when hidden
+                    modal.addEventListener('hidden.bs.modal', function() {
+                        modal.remove();
+                    });
+                });
+            });
+        }
+        
+        // Initial attachment of event listeners
+        attachDemButtonEventListeners();
         
         // Handle DEM deletion
         document.addEventListener('click', function(e) {
@@ -681,8 +882,8 @@
                             Logger.error(`Failed to delete DEM: ${filename}`, data);
                         }
                         
-                        let alertClass = data.success ? 'alert-success' : 'alert-danger';
-                        showAlert(data.message, alertClass);
+                        let type = data.success ? 'success' : 'danger';
+                        showAlert(data.message, type);
                         
                         if (data.success) {
                             // Remove the card from the UI
@@ -707,7 +908,7 @@
                                     <div>
                                         <p>This DEM file is currently in use by another application. Please close any map views or applications that might be using this DEM and try again.</p>
                                     </div>
-                                `, 'alert-warning', 15000);
+                                `, 'warning', 15000);
                             }
                         }
                     })
@@ -724,167 +925,40 @@
                             timestamp: new Date().toISOString()
                         });
                         
-                        showAlert('Error: ' + error.message, 'alert-danger');
+                        showAlert('Error: ' + error.message, 'danger');
                     });
                 }
             }
         });
         
-        // Handle DEM renaming
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('rename-dem-btn')) {
-                const filename = e.target.dataset.demFilename;
-                const currentName = e.target.dataset.demDisplayName;
-                
-                // Create a modal for renaming
-                const modalId = 'renameModal' + Date.now();
-                const modal = document.createElement('div');
-                modal.className = 'modal fade';
-                modal.id = modalId;
-                modal.setAttribute('tabindex', '-1');
-                modal.setAttribute('aria-hidden', 'true');
-                
-                modal.innerHTML = `
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Rename DEM</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <form id="rename-form-${modalId}">
-                                    <div class="mb-3">
-                                        <label for="new-name-${modalId}" class="form-label">New Display Name</label>
-                                        <input type="text" class="form-control" id="new-name-${modalId}" value="${currentName}" required>
-                                        <div class="form-text">Original filename: ${filename}</div>
-                                    </div>
-                                </form>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" form="rename-form-${modalId}" class="btn btn-primary">Save</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                document.body.appendChild(modal);
-                
-                // Show the modal
-                const modalObj = new bootstrap.Modal(modal);
-                modalObj.show();
-                
-                // Handle form submission
-                document.getElementById(`rename-form-${modalId}`).addEventListener('submit', function(event) {
-                    event.preventDefault();
-                    
-                    const newName = document.getElementById(`new-name-${modalId}`).value;
-                    
-                    if (!newName) {
-                        return;
-                    }
-                    
-                    // Send rename request
-                    fetch('/api/rename-dem', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            filename: filename,
-                            display_name: newName
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        // Hide modal
-                        modalObj.hide();
-                        
-                        // Show result
-                        let alertClass = data.success ? 'alert-success' : 'alert-danger';
-                        showAlert(data.message, alertClass);
-                        
-                        // Refresh the DEMs list if successful
-                        if (data.success) {
-                            refreshDEMsList();
-                        }
-                    })
-                    .catch(error => {
-                        // Hide modal
-                        modalObj.hide();
-                        
-                        // Show error
-                        showAlert('Error: ' + error.message, 'alert-danger');
-                    });
-                });
-                
-                // Remove modal from DOM when hidden
-                modal.addEventListener('hidden.bs.modal', function() {
-                    modal.remove();
-                });
-            }
-        });
-        
-        // Function to refresh the DEMs list
-        function refreshDEMsList() {
-            fetch('/api/list-dems')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const demsContainer = document.getElementById('dems-container');
-                        
-                        if (data.dems.length === 0) {
-                            demsContainer.innerHTML = '<div class="alert alert-info">No DEMs available. Fetch a DEM to get started.</div>';
-                            return;
-                        }
-                        
-                        let html = '';
-                        data.dems.forEach(dem => {
-                            html += `
-                                <div class="card dem-card" data-dem-id="${dem.id}">
-                                    <div class="card-body">
-                                        <h5 class="card-title">${dem.display_name}</h5>
-                                        <h6 class="card-subtitle mb-2 text-muted">${dem.name}</h6>
-                                        <p class="card-text">
-                                            <small>Resolution: ${dem.resolution}m</small><br>
-                                            <small>Coverage: ${dem.coverage}</small><br>
-                                            <small>Size: ${dem.size}</small>
-                                        </p>
-                                        <div class="d-flex justify-content-between">
-                                            <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="${dem.name}">Delete</button>
-                                            <a href="/" class="btn btn-sm btn-outline-primary view-dem-btn" data-dem-id="${dem.id}">View on Map</a>
-                                        </div>
-                                        <div class="d-flex justify-content-between mt-2">
-                                            <button class="btn btn-sm btn-outline-secondary rename-dem-btn" data-dem-filename="${dem.name}" data-dem-display-name="${dem.display_name}">Rename</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        
-                        demsContainer.innerHTML = html;
-                    }
-                })
-                .catch(error => {
-                    showAlert('Error refreshing DEMs list: ' + error.message, 'alert-danger');
-                });
-        }
-        
         // Function to show alerts with optional timeout
-        function showAlert(message, alertClass, timeout = 5000) {
+        function showAlert(message, type = 'success', timeout = 5000) {
             const alertContainer = document.getElementById('alert-container');
-            const alert = document.createElement('div');
-            alert.className = `alert ${alertClass} alert-dismissible fade show`;
-            alert.innerHTML = `
+            
+            // Create the alert element
+            const alertElement = document.createElement('div');
+            alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+            alertElement.setAttribute('role', 'alert');
+            
+            // Set the message
+            alertElement.innerHTML = `
                 ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             `;
-            alertContainer.appendChild(alert);
+            
+            // Clear any existing alerts
+            while (alertContainer.firstChild) {
+                alertContainer.removeChild(alertContainer.firstChild);
+            }
+            
+            // Add the alert to the container
+            alertContainer.appendChild(alertElement);
             
             // Auto-dismiss after specified timeout
             setTimeout(() => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+                if (alertElement.parentNode === alertContainer) {
+                    alertContainer.removeChild(alertElement);
+                }
             }, timeout);
         }
         
@@ -897,18 +971,23 @@
             const defaultLon = parseFloat(document.getElementById('default-lon').value);
             const defaultZoom = parseInt(document.getElementById('default-zoom').value);
             const defaultBasemap = document.getElementById('default-basemap').value;
+            const defaultMinX = parseFloat(document.getElementById('default-minx').value);
+            const defaultMinY = parseFloat(document.getElementById('default-miny').value);
+            const defaultMaxX = parseFloat(document.getElementById('default-maxx').value);
+            const defaultMaxY = parseFloat(document.getElementById('default-maxy').value);
             
             // Save settings to localStorage
             const mapSettings = {
                 center: [defaultLat, defaultLon],
                 zoom: defaultZoom,
-                basemap: defaultBasemap
+                basemap: defaultBasemap,
+                bbox: [defaultMinX, defaultMinY, defaultMaxX, defaultMaxY]
             };
             
             localStorage.setItem('mapSettings', JSON.stringify(mapSettings));
             
             // Show success message
-            showAlert('Map settings saved successfully!', 'alert-success');
+            showAlert('Map settings saved successfully!', 'success');
         });
         
         // Load saved map settings on page load
@@ -931,6 +1010,31 @@
                 if (settings.basemap) {
                     document.getElementById('default-basemap').value = settings.basemap;
                 }
+                
+                if (settings.bbox) {
+                    document.getElementById('default-minx').value = settings.bbox[0];
+                    document.getElementById('default-miny').value = settings.bbox[1];
+                    document.getElementById('default-maxx').value = settings.bbox[2];
+                    document.getElementById('default-maxy').value = settings.bbox[3];
+                }
+            }
+            
+            // Load default bounding box values for DEM fetching form
+            const loadDefaultBoundingBox = document.getElementById('load-default-bbox');
+            if (loadDefaultBoundingBox) {
+                loadDefaultBoundingBox.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const savedSettings = localStorage.getItem('mapSettings');
+                    if (savedSettings) {
+                        const settings = JSON.parse(savedSettings);
+                        if (settings.bbox) {
+                            document.getElementById('minx').value = settings.bbox[0];
+                            document.getElementById('miny').value = settings.bbox[1];
+                            document.getElementById('maxx').value = settings.bbox[2];
+                            document.getElementById('maxy').value = settings.bbox[3];
+                        }
+                    }
+                });
             }
         });
         

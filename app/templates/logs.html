@@ -98,6 +98,7 @@
                     <span class="refresh-icon">↻</span> Refresh
                 </button>
                 <button class="btn btn-outline-danger" id="clear-logs-btn">Clear Display</button>
+                <button class="btn btn-danger" id="clear-server-logs-btn">Clear Server Logs</button>
             </div>
         </div>
         
@@ -176,6 +177,27 @@
         // Clear logs display
         clearLogsBtn.addEventListener('click', function() {
             logsContent.innerHTML = '<p class="text-center text-muted">Logs cleared. Click Refresh to load again.</p>';
+        });
+        
+        // Clear server logs
+        document.getElementById('clear-server-logs-btn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear all server logs? This action cannot be undone.')) {
+                fetch('/api/logs/clear', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        logsContent.innerHTML = '<p class="text-center text-success">Server logs cleared successfully.</p>';
+                        setTimeout(fetchLogs, 1000); // Refresh after a short delay
+                    } else {
+                        logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${data.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${error.message}</p>`;
+                });
+            }
         });
         
         // Toggle auto-refresh
