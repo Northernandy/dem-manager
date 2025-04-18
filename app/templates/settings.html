@@ -199,7 +199,7 @@
                                                 <small>Resolution: {{ dem.resolution }}m</small><br>
                                                 <small>Coverage: {{ dem.coverage }}</small><br>
                                                 <small>Size: {{ dem.size }}</small><br>
-                                                <small>Type: <span class="badge {% if dem.data_type == 'Raw DEM Data' %}bg-success{% else %}bg-primary{% endif %}">{% if dem.data_type == 'Raw DEM Data' %}Elevation Data{% else %}Visualization Image{% endif %}</span></small>
+                                                <small>Type: <span class="badge {% if dem.data_type == 'Elevation Data' %}bg-success{% else %}bg-danger{% endif %}">{{ dem.data_type }}</span></small>
                                             </p>
                                             <div class="d-flex justify-content-between">
                                                 <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="{{ dem.name }}">Delete</button>
@@ -718,7 +718,7 @@
                                             <small>Resolution: ${dem.resolution}m</small><br>
                                             <small>Coverage: ${dem.coverage}</small><br>
                                             <small>Size: ${dem.size}</small><br>
-                                            <small>Type: <span class="badge ${dem.data_type === 'raw' ? 'bg-success' : 'bg-primary'}">${dem.data_type === 'raw' ? 'Elevation Data' : 'Visualization Image'}</span></small>
+                                            <small>Type: <span class="badge ${dem.data_type === 'Elevation Data' ? 'bg-success' : 'bg-danger'}">${dem.data_type}</span></small>
                                         </p>
                                         <div class="d-flex justify-content-between">
                                             <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="${dem.name}">Delete</button>
