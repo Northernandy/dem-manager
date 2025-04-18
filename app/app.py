@@ -1037,6 +1037,43 @@ def get_dem_bounds(dem_id):
         except Exception as e:
             logger.error(f"Error reading GeoTIFF bounds: {e}")
     
+    # If we have a PNG file, try to get bounds from the associated PGW file
+    if dem_file.lower().endswith('.png'):
+        try:
+            # Check for a world file (.pgw)
+            world_file = os.path.join(DEM_DIR, f"{dem_id}.pgw")
+            if os.path.exists(world_file):
+                with open(world_file, 'r') as f:
+                    lines = f.readlines()
+                    if len(lines) >= 6:
+                        pixel_width = float(lines[0])
+                        pixel_height = float(lines[3])
+                        top_left_x = float(lines[4])
+                        top_left_y = float(lines[5])
+                        
+                        # Get image dimensions
+                        from PIL import Image
+                        img = Image.open(dem_file)
+                        width, height = img.size
+                        
+                        # Calculate bounds
+                        minx = top_left_x
+                        maxx = top_left_x + (width * pixel_width)
+                        miny = top_left_y + (height * pixel_height)
+                        maxy = top_left_y
+                        
+                        return jsonify({
+                            'success': True,
+                            'bounds': {
+                                'min_lat': miny,
+                                'min_lon': minx,
+                                'max_lat': maxy,
+                                'max_lon': maxx
+                            }
+                        })
+        except Exception as e:
+            logger.error(f"Error reading PNG world file bounds: {e}")
+    
     # Fallback to Brisbane area if all else fails
     return jsonify({
         'success': True,
