@@ -12,16 +12,34 @@ import time
 import gc
 import subprocess
 import rasterio
+import filelock  # Import filelock for file locking
 
 # Add the project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Set up file logging
+log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+os.makedirs(log_dir, exist_ok=True)
 
-# Import the DEM fetcher
+# Clear existing handlers to avoid duplication
+logger = logging.getLogger(__name__)
+logger.handlers = []
+logging.root.handlers = []
+
+# Set up basic logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(log_dir, 'app.log')),
+        logging.StreamHandler()
+    ]
+)
+
+# Import the DEM handlers
 try:
     from src.pipeline.wcs_geotiff_handler import fetch_geotiff_dem
     from src.pipeline.wms_rgb_handler import fetch_rgb_dem
@@ -42,46 +60,53 @@ try:
         """
         logger.info(f"Fetching DEM: {dem_type}, {data_type}, bbox={bbox}")
         
-        # Determine which handler to use based on data type
-        if data_type == 'raw':
-            result = fetch_geotiff_dem(bbox, dem_type, resolution, output_file)
-        elif data_type == 'rgb':
-            result = fetch_rgb_dem(bbox, dem_type, resolution, output_file)
-        else:
-            logger.error(f"Invalid data type: {data_type}")
+        # Redirect stdout to capture print statements from handlers
+        from io import StringIO
+        import sys
+        original_stdout = sys.stdout
+        captured_output = StringIO()
+        sys.stdout = captured_output
+        
+        try:
+            # Determine which handler to use based on data type
+            if data_type == 'raw':
+                result = fetch_geotiff_dem(bbox, dem_type, resolution, output_file)
+            elif data_type == 'rgb':
+                result = fetch_rgb_dem(bbox, dem_type, resolution, output_file)
+            else:
+                logger.error(f"Invalid data type: {data_type}")
+                return {
+                    'success': False,
+                    'message': f"Invalid data type: {data_type}. Must be 'raw' or 'rgb'."
+                }
+            
+            # Restore stdout
+            sys.stdout = original_stdout
+            
+            # Get the captured output
+            output_text = captured_output.getvalue()
+            
+            # Log the captured output
+            for line in output_text.splitlines():
+                if line.strip():
+                    logger.info(f"DEM Handler: {line.strip()}")
+            
+            return result
+        except Exception as e:
+            # Make sure to restore stdout even if an exception occurs
+            sys.stdout = original_stdout
+            logger.error(f"Error in fetch_dem: {str(e)}")
             return {
                 'success': False,
-                'message': f"Invalid data type: {data_type}. Must be 'raw' or 'rgb'."
+                'message': f"Error fetching DEM: {str(e)}"
             }
-        
-        return result
     
     logger.info("Successfully imported DEM handlers")
 except ImportError as e:
     logger.warning(f"Could not import DEM handlers: {e}")
     # Define placeholder function if import fails
     def fetch_dem(bbox, dem_type, data_type, resolution=None, output_file=None):
-        return {'success': False, 'message': 'DEM Fetcher not fully implemented yet.'}
-
-# Set up file logging
-log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
-os.makedirs(log_dir, exist_ok=True)
-file_handler = logging.FileHandler(os.path.join(log_dir, 'app.log'))
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
-
-# Configure root logger to use the same handlers
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-if not root_logger.handlers:
-    # Add console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    root_logger.addHandler(console_handler)
-    # Add file handler
-    root_logger.addHandler(file_handler)
+        return {'success': False, 'message': f'DEM Fetcher not fully implemented yet. Error: {str(e)}'}
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -250,79 +275,290 @@ def fetch_dem_api():
         
         def fetch_dem_thread():
             try:
-                with open(status_file, 'r') as f:
-                    status_data = json.load(f)
+                # Use file locking to prevent race conditions
+                lock_file = f"{status_file}.lock"
+                lock = filelock.FileLock(lock_file, timeout=10)
                 
-                display_name = status_data.get('display_name', '')
-                thread_data_type = status_data.get('dataType', data_type) 
-
-                with open(status_file, 'w') as f:
-                    json.dump({
-                        'status': 'downloading',
-                        'progress': 5,
-                        'message': 'Starting DEM download...',
-                        'timestamp': time.time(),
-                        'display_name': display_name,
-                        'dataType': thread_data_type 
-                    }, f)
-                
-                logger.info(f"Thread starting fetch for {output_file} with dataType={thread_data_type}")
-                
-                # Use our updated fetch_dem function with the correct parameters
-                result = fetch_dem(
-                    bbox=bbox,
-                    dem_type=dem_type,
-                    data_type=thread_data_type,
-                    resolution=target_res_meters,
-                    output_file=output_file
-                )
-                
-                logger.info(f"fetch_dem completed for {output_file} with result: {result}")
-                
-                # Update status based on the result
-                if result.get('success', False):
-                    # If successful, update the status file
-                    with open(status_file, 'w') as f:
-                        json.dump({
-                            'status': 'completed',
-                            'progress': 100,
-                            'message': 'DEM download completed successfully',
-                            'timestamp': time.time(),
-                            'display_name': display_name,
-                            'dataType': thread_data_type,
-                            'file_path': result.get('file_path', '')
-                        }, f)
-                else:
-                    # If failed, update the status file with the error message
-                    with open(status_file, 'w') as f:
-                        json.dump({
-                            'status': 'error',
-                            'progress': 100,
-                            'message': f"Error fetching DEM: {result.get('message', 'Unknown error')}",
-                            'timestamp': time.time(),
-                            'display_name': display_name,
-                            'dataType': thread_data_type
-                        }, f)
-                
-            except Exception as e:
-                logger.exception(f"Error in fetch_dem_thread for {output_file}: {e}")
                 try:
-                    with open(status_file, 'r') as f:
-                         status_data = json.load(f)
-                    display_name = status_data.get('display_name', '')
-                    thread_data_type = status_data.get('dataType', data_type)
-
-                    with open(status_file, 'w') as f:
-                         json.dump({
-                             'status': 'error', 
-                             'progress': 100, 
-                             'message': f'Error fetching DEM: {str(e)}',
-                             'timestamp': time.time(),
-                             'display_name': display_name,
-                             'dataType': thread_data_type
-                         }, f)
-                except Exception as se:
-                    logger.error(f"Failed to update status file after thread error for {output_file}: {se}")
+                    with lock:
+                        try:
+                            with open(status_file, 'r') as f:
+                                status_data = json.load(f)
+                            
+                            display_name = status_data.get('display_name', '')
+                            thread_data_type = status_data.get('dataType', data_type) 
+                        except json.JSONDecodeError as e:
+                            logger.error(f"JSON decode error reading status file: {e}")
+                            # Create a fresh status data if the file is corrupted
+                            status_data = {
+                                'status': 'starting',
+                                'progress': 0,
+                                'message': 'Initializing...',
+                                'details': 'Starting DEM download process...',
+                                'logs': [],
+                                'timestamp': time.time(),
+                                'display_name': dem_name or dem_type,
+                                'dataType': data_type
+                            }
+                            display_name = dem_name or dem_type
+                            thread_data_type = data_type
+                        except Exception as e:
+                            logger.error(f"Error reading status file: {e}")
+                            # Create a fresh status data if the file can't be read
+                            status_data = {
+                                'status': 'starting',
+                                'progress': 0,
+                                'message': 'Initializing...',
+                                'details': 'Starting DEM download process...',
+                                'logs': [],
+                                'timestamp': time.time(),
+                                'display_name': dem_name or dem_type,
+                                'dataType': data_type
+                            }
+                            display_name = dem_name or dem_type
+                            thread_data_type = data_type
+                
+                    # Record start time for execution timing
+                    start_time = time.time()
+                
+                    with lock:
+                        try:
+                            with open(status_file, 'w') as f:
+                                json.dump({
+                                    'status': 'downloading',
+                                    'progress': 5,
+                                    'message': 'Starting DEM download...',
+                                    'details': 'Initializing DEM download process...',
+                                    'logs': [],
+                                    'timestamp': time.time(),
+                                    'display_name': display_name,
+                                    'dataType': thread_data_type 
+                                }, f)
+                        except Exception as e:
+                            logger.error(f"Error writing to status file: {e}")
+                except filelock.Timeout:
+                    logger.error(f"Could not acquire lock for status file: {status_file}")
+                    return
+                
+                # Set up temporary log handler for this thread
+                status_handler = logging.FileHandler(status_file + ".log")
+                thread_logger = logging.getLogger('dem_fetch')
+                thread_logger.setLevel(logging.INFO)
+                thread_logger.addHandler(status_handler)
+                
+                try:
+                    # Log initial message
+                    thread_logger.info(f"Starting DEM download for {dem_type}, data type: {thread_data_type}")
+                    thread_logger.info(f"Bounding box: {bbox}")
+                    
+                    # Create a subclass of the handler that logs to our status system
+                    class LoggingDEMHandler:
+                        def __init__(self, original_handler, logger):
+                            self.original_handler = original_handler
+                            self.logger = logger
+                            
+                        def __call__(self, *args, **kwargs):
+                            # Create a wrapper for print that logs to our status system
+                            import builtins
+                            original_print = builtins.print
+                            
+                            def logging_print(*args, **kwargs):
+                                # Call the original print
+                                original_print(*args, **kwargs)
+                                
+                                # Log to our status system without timestamp
+                                message = ' '.join(str(arg) for arg in args)
+                                # Use a custom log record to bypass the formatter
+                                record = logging.LogRecord(
+                                    name=self.logger.name,
+                                    level=logging.INFO,
+                                    pathname='',
+                                    lineno=0,
+                                    msg=message,
+                                    args=(),
+                                    exc_info=None
+                                )
+                                self.logger.handle(record)
+                            
+                            # Replace the built-in print with our logging print
+                            builtins.print = logging_print
+                            
+                            try:
+                                # Call the original handler
+                                result = self.original_handler(*args, **kwargs)
+                                return result
+                            finally:
+                                # Restore the original print
+                                builtins.print = original_print
+                    
+                    # Wrap the handlers with our logging handler
+                    logging_geotiff_handler = LoggingDEMHandler(fetch_geotiff_dem, thread_logger)
+                    logging_rgb_handler = LoggingDEMHandler(fetch_rgb_dem, thread_logger)
+                    
+                    # Update progress
+                    try:
+                        with lock:
+                            try:
+                                with open(status_file, 'r') as f:
+                                    status_data = json.load(f)
+                                
+                                with open(status_file, 'w') as f:
+                                    json.dump({
+                                        'status': 'downloading',
+                                        'progress': 10,
+                                        'message': 'Fetching DEM data...',
+                                        'details': f'Fetching {thread_data_type} DEM data for {dem_type}...',
+                                        'timestamp': time.time(),
+                                        'display_name': display_name,
+                                        'dataType': thread_data_type,
+                                        'logs': status_data.get('logs', [])
+                                    }, f)
+                            except json.JSONDecodeError as e:
+                                logger.error(f"JSON decode error updating progress: {e}")
+                                # Create a fresh status update if the file is corrupted
+                                with open(status_file, 'w') as f:
+                                    json.dump({
+                                        'status': 'downloading',
+                                        'progress': 10,
+                                        'message': 'Fetching DEM data...',
+                                        'details': f'Fetching {thread_data_type} DEM data for {dem_type}...',
+                                        'timestamp': time.time(),
+                                        'display_name': display_name,
+                                        'dataType': thread_data_type,
+                                        'logs': []
+                                    }, f)
+                            except Exception as e:
+                                logger.error(f"Error updating progress: {e}")
+                    except filelock.Timeout:
+                        logger.error(f"Could not acquire lock for status file: {status_file}")
+                    
+                    # Fetch the DEM using the appropriate handler
+                    if thread_data_type == 'raw':
+                        result = logging_geotiff_handler(bbox, dem_type, target_res_meters, output_file)
+                    else:  # rgb
+                        result = logging_rgb_handler(bbox, dem_type, target_res_meters, output_file)
+                    
+                    # Log the result
+                    print(f"DEBUG: app.py received result with success={result.get('success', False)}, message={result.get('message', '')}, file_path={result.get('file_path', '')}")
+                    
+                    if result.get('success', False):
+                        # Calculate total execution time
+                        execution_time = time.time() - start_time
+                        # Add a more prominent completion message for RGB DEMs
+                        if thread_data_type == 'rgb':
+                            # Format the final completion message for the logger
+                            completion_message = (
+                                f"[COMPLETED] RGB DEM visualization successfully created.\n"
+                                f"  Message: {result.get('message', '')}\n"
+                                f"  File: {result.get('file_path', '')}\n"
+                                f"  Time: {execution_time:.2f} seconds"
+                            )
+                            thread_logger.info(completion_message)
+                        
+                        # Final update with success
+                        try:
+                            with lock:
+                                try:
+                                    with open(status_file, 'r') as f:
+                                        status_data = json.load(f)
+                                    
+                                    status_data.update({
+                                        'status': 'complete',
+                                        'progress': 100,
+                                        'message': 'DEM download complete',
+                                        'timestamp': time.time()
+                                    })
+                                    
+                                    with open(status_file, 'w') as f:
+                                        json.dump(status_data, f)
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"JSON decode error updating final status: {e}")
+                                    # Create a fresh status update if the file is corrupted
+                                    with open(status_file, 'w') as f:
+                                        json.dump({
+                                            'status': 'complete',
+                                            'progress': 100,
+                                            'message': 'DEM download complete',
+                                            'timestamp': time.time(),
+                                            'display_name': display_name,
+                                            'dataType': thread_data_type,
+                                            'logs': []
+                                        }, f)
+                                except Exception as e:
+                                    logger.error(f"Error updating final status: {e}")
+                        except filelock.Timeout:
+                            logger.error(f"Could not acquire lock for status file: {status_file}")
+                    else:
+                        # Calculate total execution time even for failures
+                        execution_time = time.time() - start_time
+                        thread_logger.error(f"DEM download failed: {result.get('message', '')}")
+                        thread_logger.error(f"Total execution time: {execution_time:.2f} seconds")
+                        
+                        # Update with error
+                        try:
+                            with lock:
+                                try:
+                                    with open(status_file, 'r') as f:
+                                        status_data = json.load(f)
+                                    
+                                    status_data.update({
+                                        'status': 'error', 
+                                        'progress': 100, 
+                                        'message': f"Error: {result.get('message', '')}",
+                                        'timestamp': time.time(),
+                                        'display_name': display_name,
+                                        'dataType': thread_data_type,
+                                        'logs': status_data.get('logs', [])
+                                    })
+                                    
+                                    with open(status_file, 'w') as f:
+                                        json.dump(status_data, f)
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"JSON decode error updating error status: {e}")
+                                    # Create a fresh status update if the file is corrupted
+                                    with open(status_file, 'w') as f:
+                                        json.dump({
+                                            'status': 'error', 
+                                            'progress': 100, 
+                                            'message': f"Error: {result.get('message', '')}",
+                                            'timestamp': time.time(),
+                                            'display_name': display_name,
+                                            'dataType': thread_data_type,
+                                            'logs': []
+                                        }, f)
+                                except Exception as e:
+                                    logger.error(f"Error updating error status: {e}")
+                        except filelock.Timeout:
+                            logger.error(f"Could not acquire lock for status file: {status_file}")
+                except Exception as inner_e:
+                    # Log the exception
+                    thread_logger.error(f"Inner exception during DEM download: {str(inner_e)}")
+                    
+                    # Re-raise to be caught by outer exception handler
+                    raise inner_e
+                finally:
+                    # Always remove the handler
+                    thread_logger.removeHandler(status_handler)
+            except Exception as e:
+                logger.exception(f"Error in fetch_dem_thread: {e}")
+                # Try to update the status file with the error
+                try:
+                    with lock:
+                        try:
+                            with open(status_file, 'w') as f:
+                                json.dump({
+                                    'status': 'error',
+                                    'progress': 100,
+                                    'message': f"Error: {str(e)}",
+                                    'timestamp': time.time(),
+                                    'display_name': dem_name or dem_type,
+                                    'dataType': data_type,
+                                    'logs': []
+                                }, f)
+                        except Exception as se:
+                            logger.error(f"Failed to update status file after thread error: {se}")
+                except Exception as le:
+                    logger.error(f"Failed to acquire lock after thread error: {le}")
         
         thread = threading.Thread(target=fetch_dem_thread)
         thread.start()
@@ -379,6 +615,24 @@ def delete_dem(filename):
                     os.remove(status_file)
                 except Exception:
                     logger.warning(f"Could not delete status file: {status_file}")
+            
+            # Delete associated PGW file if it exists
+            pgw_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}.pgw")
+            if os.path.exists(pgw_file):
+                try:
+                    os.remove(pgw_file)
+                    logger.info(f"Deleted associated PGW file: {pgw_file}")
+                except Exception as pgw_e:
+                    logger.warning(f"Could not delete PGW file: {pgw_file}, error: {str(pgw_e)}")
+            
+            # Delete associated auxiliary files (like .aux.xml)
+            aux_file = os.path.join(DEM_DIR, f"{filename}.aux.xml")
+            if os.path.exists(aux_file):
+                try:
+                    os.remove(aux_file)
+                    logger.info(f"Deleted associated auxiliary file: {aux_file}")
+                except Exception as aux_e:
+                    logger.warning(f"Could not delete auxiliary file: {aux_file}, error: {str(aux_e)}")
             
             metadata_dir = os.path.join(DEM_DIR, 'metadata')
             metadata_file = os.path.join(metadata_dir, f"{filename}.json")
@@ -749,6 +1003,23 @@ def get_app_logs():
         logger.exception(f"Error retrieving app logs")
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/api/logs/clear', methods=['POST'])
+def clear_logs():
+    """Clear application logs."""
+    try:
+        log_file = os.path.join(log_dir, 'app.log')
+        if os.path.exists(log_file):
+            # Open the file in write mode to clear its contents
+            with open(log_file, 'w') as f:
+                f.write('')
+            logger.info("Log file cleared")
+            return jsonify({'success': True, 'message': 'Logs cleared successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Log file not found'})
+    except Exception as e:
+        logger.exception(f"Error clearing logs")
+        return jsonify({'success': False, 'message': str(e)})
+
 @app.route('/api/logs/dem')
 def get_dem_logs():
     """Get DEM-specific logs."""
@@ -957,18 +1228,33 @@ def get_available_dems():
                 # Format the bounding box for display
                 coverage = f"{bbox[0]:.4f}, {bbox[1]:.4f} to {bbox[2]:.4f}, {bbox[3]:.4f}"
                 
-                # Check for a status file to get the display name
-                status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
+                # Default display name from DEM type
                 display_name = DEM_TYPES.get(dem_type, {}).get('name', 'Unknown DEM')
                 
-                if os.path.exists(status_file):
+                # First check metadata directory for display name (used by rename function)
+                metadata_dir = os.path.join(DEM_DIR, 'metadata')
+                metadata_file = os.path.join(metadata_dir, f"{filename}.json")
+                
+                if os.path.exists(metadata_file):
                     try:
-                        with open(status_file, 'r') as f:
-                            status_data = json.load(f)
-                            if 'display_name' in status_data:
-                                display_name = status_data['display_name']
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+                            if 'display_name' in metadata:
+                                display_name = metadata['display_name']
                     except Exception as e:
-                        logger.warning(f"Could not read status file for {filename}: {e}")
+                        logger.warning(f"Could not read metadata file for {filename}: {e}")
+                
+                # If no display name found in metadata, check the status file (legacy method)
+                if display_name == DEM_TYPES.get(dem_type, {}).get('name', 'Unknown DEM'):
+                    status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
+                    if os.path.exists(status_file):
+                        try:
+                            with open(status_file, 'r') as f:
+                                status_data = json.load(f)
+                                if 'display_name' in status_data:
+                                    display_name = status_data['display_name']
+                        except Exception as e:
+                            logger.warning(f"Could not read status file for {filename}: {e}")
                 
                 # Create DEM object
                 dem = {
