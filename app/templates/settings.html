@@ -610,6 +610,9 @@
             // Make sure the log element is visible
             logsElement.style.display = 'block';
             
+            // Track completion time for timeout
+            let completionTime = null;
+            
             // Poll every second
             const pollInterval = setInterval(() => {
                 fetch(`/api/check-dem-status/${filename}`)
@@ -633,18 +636,44 @@
                             
                             // Check if the download is complete or failed
                             if (statusData.status === 'complete' || statusData.status === 'completed') {
-                                clearInterval(pollInterval);
-                                completeDownload({
-                                    success: true,
-                                    message: 'DEM download completed successfully',
-                                    filename: filename
-                                });
+                                // Record completion time if not already set
+                                if (!completionTime) {
+                                    completionTime = new Date();
+                                    Logger.info(`DEM download completed at ${completionTime.toISOString()}`);
+                                }
+                                
+                                // Check if 5 seconds have passed since completion
+                                const currentTime = new Date();
+                                const elapsedSinceCompletion = (currentTime - completionTime) / 1000;
+                                
+                                if (elapsedSinceCompletion >= 5) {
+                                    clearInterval(pollInterval);
+                                    Logger.info(`Stopped polling after 5 seconds of completion`);
+                                    completeDownload({
+                                        success: true,
+                                        message: 'DEM download completed successfully',
+                                        filename: filename
+                                    });
+                                }
                             } else if (statusData.status === 'error') {
-                                clearInterval(pollInterval);
-                                completeDownload({
-                                    success: false,
-                                    message: statusData.message || 'An error occurred during DEM download'
-                                });
+                                // Record completion time if not already set
+                                if (!completionTime) {
+                                    completionTime = new Date();
+                                    Logger.error(`DEM download failed at ${completionTime.toISOString()}`);
+                                }
+                                
+                                // Check if 5 seconds have passed since completion
+                                const currentTime = new Date();
+                                const elapsedSinceCompletion = (currentTime - completionTime) / 1000;
+                                
+                                if (elapsedSinceCompletion >= 5) {
+                                    clearInterval(pollInterval);
+                                    Logger.info(`Stopped polling after 5 seconds of error`);
+                                    completeDownload({
+                                        success: false,
+                                        message: statusData.message || 'An error occurred during DEM download'
+                                    });
+                                }
                             }
                         } else {
                             // Error checking status
@@ -669,20 +698,19 @@
             fetchBtn.disabled = false;
             fetchBtn.textContent = 'Fetch DEM Data';
             
-            // Only hide the progress container but keep the logs visible
-            setTimeout(() => {
-                const progressContainer = document.getElementById('fetch-progress-container');
-                if (progressContainer) {
-                    // Remove d-none class if it was added
-                    progressContainer.classList.remove('d-none');
-                    
-                    // Make sure logs remain visible
-                    const logsElement = document.getElementById('fetch-logs');
-                    if (logsElement) {
-                        logsElement.style.display = 'block';
-                    }
-                }
-            }, 3000);
+            // Make sure the progress container and logs remain visible
+            const progressContainer = document.getElementById('fetch-progress-container');
+            const logsElement = document.getElementById('fetch-logs');
+            
+            if (progressContainer) {
+                // Remove d-none class if it was added
+                progressContainer.classList.remove('d-none');
+            }
+            
+            if (logsElement) {
+                // Make sure logs remain visible
+                logsElement.style.display = 'block';
+            }
             
             // Show result
             let type = data.success ? 'success' : 'danger';

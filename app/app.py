@@ -657,9 +657,18 @@ def check_dem_status(filename):
     try:
         filename = secure_filename(filename)
         status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
+        log_file = status_file + ".log"
         
         logger.info(f"Checking DEM status for: {filename}")
         
+        # Initialize status data with default values
+        status_data = {
+            'status': 'unknown',
+            'message': 'No status information available',
+            'logs': []
+        }
+        
+        # First, check if the status file exists
         if os.path.exists(status_file):
             try:
                 with open(status_file, 'r') as f:
@@ -684,32 +693,12 @@ def check_dem_status(filename):
                     }
                     
                     # If the file exists but status is not 'completed', update it
-                    if status_data.get('status') != 'completed':
+                    if status_data.get('status') != 'completed' and status_data.get('status') != 'complete':
                         status_data['status'] = 'completed'
                         status_data['message'] = 'DEM download completed successfully'
                         
                         with open(status_file, 'w') as f:
                             json.dump(status_data, f)
-                
-                # Map status values to what the frontend expects
-                status_mapping = {
-                    'starting': 'starting',
-                    'downloading': 'downloading',
-                    'completed': 'complete',
-                    'error': 'failed'
-                }
-                
-                # Create a response that matches what the frontend expects
-                response = {
-                    'success': True,
-                    'status': {
-                        'status': status_mapping.get(status_data.get('status', 'unknown'), 'unknown'),
-                        'message': status_data.get('message', 'No status message available')
-                    },
-                    'status_data': status_data
-                }
-                
-                return jsonify(response)
             except Exception as e:
                 logger.exception(f"Error reading status file for {filename}")
                 return jsonify({
@@ -733,26 +722,59 @@ def check_dem_status(filename):
                         'bytes': file_size_bytes,
                         'mb': round(file_size_mb, 2),
                         'formatted': f"{file_size_mb:.2f} MB"
-                    }
-                }
-                
-                # Create a response that matches what the frontend expects
-                response = {
-                    'success': True,
-                    'status': {
-                        'status': 'complete',
-                        'message': 'DEM file exists'
                     },
-                    'status_data': status_data
+                    'logs': []
                 }
-                
-                return jsonify(response)
             else:
                 logger.warning(f"No status file or DEM file found for {filename}")
                 return jsonify({
                     'success': False,
                     'message': f"No status information available for {filename}"
                 })
+        
+        # Now, check if the log file exists and read its contents
+        log_contents = []
+        if os.path.exists(log_file):
+            try:
+                # Try different encodings to handle potential encoding issues
+                encodings = ['utf-8', 'latin-1', 'cp1252']
+                for encoding in encodings:
+                    try:
+                        with open(log_file, 'r', encoding=encoding) as f:
+                            log_contents = [line.strip() for line in f.readlines()]
+                        break  # If successful, break out of the loop
+                    except UnicodeDecodeError:
+                        continue  # Try the next encoding
+                
+                # If we couldn't read with any encoding, log an error
+                if not log_contents and len(encodings) > 0:
+                    logger.warning(f"Could not read log file with any of the attempted encodings: {log_file}")
+            except Exception as e:
+                logger.warning(f"Error reading log file for {filename}: {str(e)}")
+        
+        # Add log contents to status data
+        status_data['logs'] = log_contents
+        
+        # Map status values to what the frontend expects
+        status_mapping = {
+            'starting': 'starting',
+            'downloading': 'downloading',
+            'completed': 'complete',
+            'complete': 'complete',
+            'error': 'failed'
+        }
+        
+        # Create a response that matches what the frontend expects
+        response = {
+            'success': True,
+            'status': {
+                'status': status_mapping.get(status_data.get('status', 'unknown'), 'unknown'),
+                'message': status_data.get('message', 'No status message available')
+            },
+            'status_data': status_data
+        }
+        
+        return jsonify(response)
     except Exception as e:
         logger.exception(f"Error checking DEM status for {filename}")
         return jsonify({
