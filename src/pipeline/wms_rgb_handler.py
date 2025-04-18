@@ -355,13 +355,19 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     else:
         png_world_file = output_path.replace('.png', '.pgw')
     
-    with open(png_world_file, "w") as wf:
-        wf.write(f"{x_scale}\n")      # pixel size in x
-        wf.write("0.0\n")             # rotation
-        wf.write("0.0\n")             # rotation
-        wf.write(f"{-y_scale}\n")     # pixel size in -y
-        wf.write(f"{bbox['min_lon']}\n")  # x upper left
-        wf.write(f"{bbox['max_lat']}\n")  # y upper left
+    try:
+        os.makedirs(os.path.dirname(png_world_file) if os.path.dirname(png_world_file) else '.', exist_ok=True)
+        
+        with open(png_world_file, "w") as wf:
+            wf.write(f"{x_scale}\n")      # pixel size in x
+            wf.write("0.0\n")             # rotation
+            wf.write("0.0\n")             # rotation
+            wf.write(f"{-y_scale}\n")     # pixel size in -y
+            wf.write(f"{bbox['min_lon']}\n")  # x upper left
+            wf.write(f"{bbox['max_lat']}\n")  # y upper left
+        print(f"World file (PGW) saved as {png_world_file}")
+    except Exception as e:
+        print(f"Error creating PGW file: {str(e)}")
 
     # Create a small info file
     if not output_path:

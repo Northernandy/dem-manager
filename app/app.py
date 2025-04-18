@@ -587,6 +587,33 @@ def delete_dem(filename):
                                 'message': f'File is in use by another process. Please close any applications using this DEM and try again. Error: {str(e)}'
                             })
             
+            # Delete associated auxiliary files (like .aux.xml)
+            aux_file = os.path.join(DEM_DIR, f"{filename}.aux.xml")
+            if os.path.exists(aux_file):
+                try:
+                    os.remove(aux_file)
+                    logger.info(f"Deleted associated auxiliary file: {aux_file}")
+                except Exception as aux_e:
+                    logger.warning(f"Could not delete auxiliary file: {aux_file}, error: {str(aux_e)}")
+            
+            # Delete associated info.json file
+            info_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_info.json")
+            if os.path.exists(info_file):
+                try:
+                    os.remove(info_file)
+                    logger.info(f"Deleted associated info file: {info_file}")
+                except Exception as info_e:
+                    logger.warning(f"Could not delete info file: {info_file}, error: {str(info_e)}")
+            
+            # Delete associated status.json.log file
+            status_log_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json.log")
+            if os.path.exists(status_log_file):
+                try:
+                    os.remove(status_log_file)
+                    logger.info(f"Deleted associated status log file: {status_log_file}")
+                except Exception as log_e:
+                    logger.warning(f"Could not delete status log file: {status_log_file}, error: {str(log_e)}")
+            
             status_file = os.path.join(DEM_DIR, f"{os.path.splitext(filename)[0]}_status.json")
             if os.path.exists(status_file):
                 try:
@@ -602,15 +629,6 @@ def delete_dem(filename):
                     logger.info(f"Deleted associated PGW file: {pgw_file}")
                 except Exception as pgw_e:
                     logger.warning(f"Could not delete PGW file: {pgw_file}, error: {str(pgw_e)}")
-            
-            # Delete associated auxiliary files (like .aux.xml)
-            aux_file = os.path.join(DEM_DIR, f"{filename}.aux.xml")
-            if os.path.exists(aux_file):
-                try:
-                    os.remove(aux_file)
-                    logger.info(f"Deleted associated auxiliary file: {aux_file}")
-                except Exception as aux_e:
-                    logger.warning(f"Could not delete auxiliary file: {aux_file}, error: {str(aux_e)}")
             
             metadata_dir = os.path.join(DEM_DIR, 'metadata')
             metadata_file = os.path.join(metadata_dir, f"{filename}.json")
