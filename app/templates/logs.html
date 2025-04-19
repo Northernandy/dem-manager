@@ -1,278 +1,240 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brisbane Flood Visualization - Logs</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .log-entry {
-            font-family: monospace;
-            white-space: pre-wrap;
-            word-break: break-all;
-            margin-bottom: 4px;
-            padding: 4px;
-            border-radius: 4px;
-        }
-        .log-info {
-            background-color: #f8f9fa;
-        }
-        .log-warning {
-            background-color: #fff3cd;
-        }
-        .log-error {
-            background-color: #f8d7da;
-        }
-        .log-debug {
-            color: #6c757d;
-        }
-        /* Add styles for a smaller navbar */
-        .navbar {
-            padding-top: 0;
-            padding-bottom: 0;
-            min-height: 40px;
-            height: 40px;
-        }
-        .navbar-brand {
-            padding-top: 0;
-            padding-bottom: 0;
-            font-size: 1rem;
-        }
-        .nav-link {
-            padding-top: 0.25rem;
-            padding-bottom: 0.25rem;
-        }
-        #log-container {
-            max-height: 80vh;
-            overflow-y: auto;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 10px;
-        }
-        .auto-refresh-toggle {
-            margin-right: 10px;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="/">Brisbane Flood Visualization</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">Map</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/settings">Settings</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/logs">Logs</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+{% extends "admin_base.html" %}
 
-    <div class="container mt-4">
-        <h1>System Logs</h1>
-        
-        <!-- Log controls -->
-        <div class="d-flex justify-content-between mb-3">
-            <div>
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-primary active" id="all-logs-btn">All Logs</button>
-                    <button type="button" class="btn btn-outline-primary" id="dem-logs-btn">DEM Logs</button>
-                </div>
-            </div>
-            <div>
-                <div class="form-check form-switch auto-refresh-toggle d-inline-block">
-                    <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
-                    <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
-                </div>
-                <button class="btn btn-outline-secondary" id="refresh-logs-btn">
-                    <span class="refresh-icon">↻</span> Refresh
-                </button>
-                <button class="btn btn-outline-danger" id="clear-logs-btn">Clear Display</button>
-                <button class="btn btn-danger" id="clear-server-logs-btn">Clear Server Logs</button>
-            </div>
-        </div>
-        
-        <!-- Log display -->
-        <div id="log-container" class="mb-3">
-            <div id="logs-content">
-                <p class="text-center text-muted">Loading logs...</p>
-            </div>
+{% block title %}Brisbane Flood Visualization - Logs{% endblock %}
+
+{% block nav_logs_active %}active{% endblock %}
+
+{% block page_css %}
+.log-entry {
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 4px;
+    padding: 4px;
+    border-radius: 4px;
+}
+.log-info {
+    background-color: #f8f9fa;
+}
+.log-warning {
+    background-color: #fff3cd;
+}
+.log-error {
+    background-color: #f8d7da;
+}
+.log-debug {
+    color: #6c757d;
+}
+#log-container {
+    max-height: 80vh;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    padding: 10px;
+}
+.auto-refresh-toggle {
+    margin-right: 10px;
+}
+{% endblock %}
+
+{% block content %}
+<h1>System Logs</h1>
+
+<!-- Log controls -->
+<div class="d-flex justify-content-between mb-3">
+    <div>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-primary active" id="all-logs-btn">All Logs</button>
+            <button type="button" class="btn btn-outline-primary" id="dem-logs-btn">DEM Logs</button>
         </div>
     </div>
+    <div>
+        <div class="form-check form-switch auto-refresh-toggle d-inline-block">
+            <input class="form-check-input" type="checkbox" id="auto-refresh" checked>
+            <label class="form-check-label" for="auto-refresh">Auto-refresh</label>
+        </div>
+        <button class="btn btn-outline-secondary" id="refresh-logs-btn">
+            <span class="refresh-icon">↻</span> Refresh
+        </button>
+        <button class="btn btn-outline-danger" id="clear-logs-btn">Clear Display</button>
+        <button class="btn btn-danger" id="clear-server-logs-btn">Clear Server Logs</button>
+    </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Log display state
-        let currentLogType = 'app'; // 'app' or 'dem'
-        let autoRefresh = true;
-        let refreshInterval = null;
-        
-        // DOM elements
-        const logContainer = document.getElementById('log-container');
-        const logsContent = document.getElementById('logs-content');
-        const allLogsBtn = document.getElementById('all-logs-btn');
-        const demLogsBtn = document.getElementById('dem-logs-btn');
-        const refreshLogsBtn = document.getElementById('refresh-logs-btn');
-        const clearLogsBtn = document.getElementById('clear-logs-btn');
-        const autoRefreshToggle = document.getElementById('auto-refresh');
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load initial logs
-            fetchLogs();
-            
-            // Set up auto-refresh
-            setupAutoRefresh();
-        });
+<!-- Log display -->
+<div id="log-container" class="mb-3">
+    <div id="logs-content">
+        <p class="text-center text-muted">Loading logs...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Log display state
+    let currentLogType = 'app'; // 'app' or 'dem'
+    let autoRefresh = true;
+    let refreshInterval;
+    
+    // DOM elements
+    const logsContent = document.getElementById('logs-content');
+    const logContainer = document.getElementById('log-container');
+    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    const clearLogsBtn = document.getElementById('clear-logs-btn');
+    const allLogsBtn = document.getElementById('all-logs-btn');
+    const demLogsBtn = document.getElementById('dem-logs-btn');
+    const autoRefreshToggle = document.getElementById('auto-refresh');
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load initial logs
+        fetchLogs();
         
         // Set up auto-refresh
-        function setupAutoRefresh() {
-            if (autoRefresh) {
-                refreshInterval = setInterval(fetchLogs, 5000); // Refresh every 5 seconds
-            } else {
-                clearInterval(refreshInterval);
-            }
+        setupAutoRefresh();
+    });
+    
+    // Set up auto-refresh
+    function setupAutoRefresh() {
+        // Clear any existing interval
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
         }
         
-        // Toggle between log types
-        allLogsBtn.addEventListener('click', function() {
-            allLogsBtn.classList.add('active');
-            allLogsBtn.classList.remove('btn-outline-primary');
-            allLogsBtn.classList.add('btn-primary');
-            
-            demLogsBtn.classList.remove('active');
-            demLogsBtn.classList.add('btn-outline-primary');
-            demLogsBtn.classList.remove('btn-primary');
-            
-            currentLogType = 'app';
-            fetchLogs();
-        });
-        
-        demLogsBtn.addEventListener('click', function() {
-            demLogsBtn.classList.add('active');
-            demLogsBtn.classList.remove('btn-outline-primary');
-            demLogsBtn.classList.add('btn-primary');
-            
-            allLogsBtn.classList.remove('active');
-            allLogsBtn.classList.add('btn-outline-primary');
-            allLogsBtn.classList.remove('btn-primary');
-            
-            currentLogType = 'dem';
-            fetchLogs();
-        });
-        
-        // Manual refresh
-        refreshLogsBtn.addEventListener('click', fetchLogs);
-        
-        // Clear logs display
-        clearLogsBtn.addEventListener('click', function() {
-            logsContent.innerHTML = '<p class="text-center text-muted">Logs cleared. Click Refresh to load again.</p>';
-        });
-        
-        // Clear server logs
-        document.getElementById('clear-server-logs-btn').addEventListener('click', function() {
-            if (confirm('Are you sure you want to clear all server logs? This action cannot be undone.')) {
-                fetch('/api/logs/clear', {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        logsContent.innerHTML = '<p class="text-center text-success">Server logs cleared successfully.</p>';
-                        setTimeout(fetchLogs, 1000); // Refresh after a short delay
-                    } else {
-                        logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${data.message}</p>`;
-                    }
-                })
-                .catch(error => {
-                    logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${error.message}</p>`;
-                });
-            }
-        });
-        
-        // Toggle auto-refresh
-        autoRefreshToggle.addEventListener('change', function() {
-            autoRefresh = this.checked;
-            setupAutoRefresh();
-        });
-        
-        // Fetch logs from the server
-        function fetchLogs() {
-            const endpoint = currentLogType === 'app' ? '/api/logs/app' : '/api/logs/dem';
-            
-            fetch(endpoint)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        displayLogs(data.logs);
-                    } else {
-                        logsContent.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
-                    }
-                })
-                .catch(error => {
-                    logsContent.innerHTML = `<p class="text-danger">Error fetching logs: ${error.message}</p>`;
-                });
+        // Set up new interval if auto-refresh is enabled
+        if (autoRefresh) {
+            refreshInterval = setInterval(fetchLogs, 5000);
         }
+    }
+    
+    // Toggle between log types
+    allLogsBtn.addEventListener('click', function() {
+        allLogsBtn.classList.add('active');
+        allLogsBtn.classList.remove('btn-outline-primary');
+        allLogsBtn.classList.add('btn-primary');
         
-        // Display logs in the container
-        function displayLogs(logs) {
-            if (!logs || logs.length === 0) {
-                logsContent.innerHTML = '<p class="text-center text-muted">No logs available</p>';
-                return;
-            }
-            
-            let html = '';
-            
-            // Filter out log polling requests
-            const filteredLogs = logs.filter(log => {
-                return !log.includes('GET /api/logs/app HTTP/1.1" 200') && 
-                       !log.includes('POST /api/logs/clear HTTP/1.1" 200');
-            });
-            
-            if (filteredLogs.length === 0) {
-                logsContent.innerHTML = '<p class="text-center text-muted">No logs available (all entries were filtered)</p>';
-                return;
-            }
-            
-            filteredLogs.forEach(log => {
-                // Determine log level for styling
-                let logClass = 'log-info';
-                if (log.includes(' ERROR ') || log.includes(' error ')) {
-                    logClass = 'log-error';
-                } else if (log.includes(' WARNING ') || log.includes(' warning ')) {
-                    logClass = 'log-warning';
-                } else if (log.includes(' DEBUG ') || log.includes(' debug ')) {
-                    logClass = 'log-debug';
+        demLogsBtn.classList.remove('active');
+        demLogsBtn.classList.add('btn-outline-primary');
+        demLogsBtn.classList.remove('btn-primary');
+        
+        currentLogType = 'app';
+        fetchLogs();
+    });
+    
+    demLogsBtn.addEventListener('click', function() {
+        demLogsBtn.classList.add('active');
+        demLogsBtn.classList.remove('btn-outline-primary');
+        demLogsBtn.classList.add('btn-primary');
+        
+        allLogsBtn.classList.remove('active');
+        allLogsBtn.classList.add('btn-outline-primary');
+        allLogsBtn.classList.remove('btn-primary');
+        
+        currentLogType = 'dem';
+        fetchLogs();
+    });
+    
+    // Refresh logs
+    refreshLogsBtn.addEventListener('click', fetchLogs);
+    
+    // Clear log display
+    clearLogsBtn.addEventListener('click', function() {
+        logsContent.innerHTML = '<p class="text-center text-muted">Logs cleared. Click Refresh to load again.</p>';
+    });
+    
+    // Clear server logs
+    document.getElementById('clear-server-logs-btn').addEventListener('click', function() {
+        if (confirm('Are you sure you want to clear all server logs? This action cannot be undone.')) {
+            fetch('/api/logs/clear', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logsContent.innerHTML = '<p class="text-center text-success">Server logs cleared successfully.</p>';
+                    setTimeout(fetchLogs, 1000); // Refresh after a short delay
+                } else {
+                    logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${data.message}</p>`;
                 }
-                
-                html += `<div class="log-entry ${logClass}">${escapeHtml(log)}</div>`;
+            })
+            .catch(error => {
+                logsContent.innerHTML = `<p class="text-danger">Error clearing logs: ${error.message}</p>`;
             });
-            
-            logsContent.innerHTML = html;
-            
-            // Scroll to bottom to show most recent logs
-            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    });
+    
+    // Toggle auto-refresh
+    autoRefreshToggle.addEventListener('change', function() {
+        autoRefresh = this.checked;
+        setupAutoRefresh();
+    });
+    
+    // Fetch logs from the server
+    function fetchLogs() {
+        const endpoint = currentLogType === 'app' ? '/api/logs/app' : '/api/logs/dem';
+        
+        fetch(endpoint)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    displayLogs(data.logs);
+                } else {
+                    logsContent.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+                }
+            })
+            .catch(error => {
+                logsContent.innerHTML = `<p class="text-danger">Error fetching logs: ${error.message}</p>`;
+            });
+    }
+    
+    // Display logs in the container
+    function displayLogs(logs) {
+        if (!logs || logs.length === 0) {
+            logsContent.innerHTML = '<p class="text-center text-muted">No logs available</p>';
+            return;
         }
         
-        // Helper function to escape HTML
-        function escapeHtml(unsafe) {
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+        let html = '';
+        
+        // Filter out log polling requests
+        const filteredLogs = logs.filter(log => {
+            return !log.includes('GET /api/logs/app HTTP/1.1" 200') && 
+                   !log.includes('POST /api/logs/clear HTTP/1.1" 200');
+        });
+        
+        if (filteredLogs.length === 0) {
+            logsContent.innerHTML = '<p class="text-center text-muted">No logs available (all entries were filtered)</p>';
+            return;
         }
-    </script>
-</body>
-</html>
+        
+        filteredLogs.forEach(log => {
+            // Determine log level for styling
+            let logClass = 'log-info';
+            if (log.includes(' ERROR ') || log.includes(' error ')) {
+                logClass = 'log-error';
+            } else if (log.includes(' WARNING ') || log.includes(' warning ')) {
+                logClass = 'log-warning';
+            } else if (log.includes(' DEBUG ') || log.includes(' debug ')) {
+                logClass = 'log-debug';
+            }
+            
+            html += `<div class="log-entry ${logClass}">${escapeHtml(log)}</div>`;
+        });
+        
+        logsContent.innerHTML = html;
+        
+        // Scroll to bottom to show most recent logs
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    // Helper function to escape HTML
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+{% endblock %}

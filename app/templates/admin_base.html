@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Brisbane Flood Visualization{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ now }}">
+    
+    {% block additional_css %}{% endblock %}
+    
+    <style>
+        /* Common admin page styles */
+        .dem-card {
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        .dem-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .settings-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            background-color: #f8f9fa;
+        }
+        
+        /* Navbar styling */
+        .navbar {
+            padding-top: 0;
+            padding-bottom: 0;
+            min-height: 40px;
+            height: 40px;
+            background-color: #333333 !important; /* Dark grey header */
+        }
+        
+        .navbar-brand {
+            padding-top: 0;
+            padding-bottom: 0;
+            font-size: 2.25rem; /* 50% larger than original 1.5rem */
+            color: white !important;
+        }
+        
+        .nav-link {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+            font-size: 0.9rem; /* Smaller menu items */
+            color: rgba(255, 255, 255, 0.85) !important; /* White text for menu items */
+        }
+        
+        .nav-link:hover {
+            color: white !important;
+        }
+        
+        /* Tab styling */
+        .nav-tabs .nav-link {
+            color: #000 !important;
+            font-weight: normal;
+        }
+        .nav-tabs .nav-link.active {
+            background-color: #0d6efd;
+            color: white !important;
+            font-weight: bold;
+            border-color: #0d6efd;
+        }
+    </style>
+    
+    <style>
+        {% block page_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Brisbane Flood Visualization</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_map_active %}{% endblock %}" href="/">Map</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_settings_active %}{% endblock %}" href="/settings">Settings</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_logs_active %}{% endblock %}" href="/logs">Logs</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Reserved space for alerts with fixed height -->
+        <div id="alert-container" style="min-height: 60px;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer py-2 bg-light" style="margin-top: 2rem;">
+        <div class="container text-center">
+            <span class="text-muted small">Brisbane Flood Visualization &copy; 2025</span>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Common utility functions -->
+    <script>
+        // Show alert function that can be used by all admin pages
+        function showAlert(message, type = 'info') {
+            const alertContainer = document.getElementById('alert-container');
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            alertContainer.innerHTML = alertHtml;
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(alert => {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+        }
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>
