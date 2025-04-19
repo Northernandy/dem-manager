@@ -1,0 +1,54 @@
+/* Admin pages common styles */
+
+/* Card styling */
+.dem-card {
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+.dem-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Section styling */
+.settings-section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    background-color: #f8f9fa;
+}
+
+/* Tab styling */
+.nav-tabs .nav-link {
+    color: #000 !important;
+    font-weight: normal;
+}
+.nav-tabs .nav-link.active {
+    background-color: #0d6efd;
+    color: white !important;
+    font-weight: bold;
+    border-color: #0d6efd;
+}
+
+/* Navbar styling - common for admin pages */
+.navbar {
+    padding-top: 0;
+    padding-bottom: 0;
+    min-height: 40px;
+    height: 40px;
+    background-color: #333333 !important; /* Dark grey header */
+}
+.navbar-brand {
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 2.25rem; /* 50% larger than original 1.5rem */
+    color: white !important;
+}
+.nav-link {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: 0.9rem; /* Smaller menu items */
+    color: rgba(255, 255, 255, 0.85) !important; /* White text for menu items */
+}
+.nav-link:hover {
+    color: white !important;
+}

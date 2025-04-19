@@ -13,6 +13,9 @@ import rasterio
 from PIL import Image
 from flask import jsonify
 
+# Disable PIL's size limit to avoid decompression bomb warnings
+Image.MAX_IMAGE_PIXELS = None
+
 # Initialize the logger
 logger = logging.getLogger(__name__)
 

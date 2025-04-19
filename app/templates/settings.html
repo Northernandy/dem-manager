@@ -4,6 +4,12 @@
 
 {% block nav_settings_active %}active{% endblock %}
 
+{% block page_css %}
+<style>
+/* Any settings-specific CSS that isn't already in the external CSS file */
+</style>
+{% endblock %}
+
 {% block content %}
     <h1>Settings</h1>
     
@@ -214,13 +220,9 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <footer class="footer mt-5 py-3 bg-light">
-        <div class="container text-center">
-            <span class="text-muted">Brisbane Flood Visualization &copy; 2025</span>
-        </div>
-    </footer>
-
+{% block scripts %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Client-side logging system
