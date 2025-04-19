@@ -1,18 +1,10 @@
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, send_from_directory, send_file
 import os
 import json
-import uuid
 import logging
-from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
-from werkzeug.utils import secure_filename
 import sys
-import glob
 import shutil
 import time
-import gc
-import subprocess
-import rasterio
-import filelock  # Import filelock for file locking
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
