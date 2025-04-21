@@ -28,10 +28,10 @@ function checkWebPAvailability(demId, demData) {
     }
     
     // If demData includes WebP availability info, use that
-    if (demData && 'has_high_res_webp' in demData && 'has_low_res_webp' in demData) {
+    if (demData && typeof demData.has_high_res_webp !== 'undefined' && typeof demData.has_low_res_webp !== 'undefined') {
         const result = {
-            has_high_res_webp: demData.has_high_res_webp,
-            has_low_res_webp: demData.has_low_res_webp
+            has_high_res_webp: Boolean(demData.has_high_res_webp),
+            has_low_res_webp: Boolean(demData.has_low_res_webp)
         };
         console.log(`[WebP] Using API-provided WebP availability for ${demId}:`, result);
         webpAvailabilityCache[demId] = result;
