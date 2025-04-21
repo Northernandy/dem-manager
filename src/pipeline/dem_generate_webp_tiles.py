@@ -143,9 +143,14 @@ def tile_png_to_webp(image_name, quality, lossless):
     print(f"Metadata saved to: {json_path}")
     print("Tile processing complete!")
 
-def main(
-    image_name="rgb_lidar_5m_152p0_-28p0_153p5_-27p0.png",
-):
+def main():
+
+#This was only used for testing purposes. The functions are called directly from wms_rgb_handler.py
+
+    image_name = "rgb_lidar_5m_152p0_-28p0_153p5_-27p0.png"
+
+# Commented out lossless processing to simplify initial testing
+    """
     print(f"Starting WebP tile generation for: {image_name}")
     # Process with quality=75, non-lossless
     tile_png_to_webp(
@@ -153,6 +158,7 @@ def main(
         quality=75,
         lossless=False,
     )
+    """
 
     # Commented out lossless processing to simplify initial testing
     """
