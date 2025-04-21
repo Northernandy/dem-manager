@@ -41,27 +41,24 @@ def tile_png_to_webp(image_name, quality, lossless):
     
     # Extract base name without extension for folder creation
     base_name = os.path.splitext(os.path.basename(image_name))[0]
-    image_folder = os.path.join(geo_folder, base_name)
-    print(f"Creating image folder: {image_folder}")
-    try:
-        os.makedirs(image_folder, exist_ok=True)
-    except Exception as e:
-        print(f"Error creating image folder: {e}")
-        return
     
-    # Create output folder
+    # Create quality suffix for folder and file naming
     quality_suffix = "lossless" if lossless else f"q{quality}"
-    output_folder = os.path.join(image_folder, f"tiles_webp_{quality_suffix}")
+    
+    # Create JSON path in the root geo directory
+    json_filename = f"{base_name}_tiles_{quality_suffix}.json"
+    json_path = os.path.join(geo_folder, json_filename)
+    print(f"JSON metadata will be saved to: {json_path}")
+    
+    # Create output folder with the same name as the JSON file (without .json extension)
+    output_folder_name = json_filename.replace(".json", "")
+    output_folder = os.path.join(geo_folder, output_folder_name)
     print(f"Creating output folder: {output_folder}")
     try:
         os.makedirs(output_folder, exist_ok=True)
     except Exception as e:
         print(f"Error creating output folder: {e}")
         return
-    
-    # Create JSON path
-    json_path = os.path.join(image_folder, f"{base_name}_tiles_{quality_suffix}.json")
-    print(f"JSON metadata will be saved to: {json_path}")
     
     # Load image and geo data - look for files in data/geo directory
     input_image_path = os.path.join(geo_folder, image_name)
@@ -129,7 +126,7 @@ def tile_png_to_webp(image_name, quality, lossless):
             south = oy + (lower * py)
 
             tiles.append({
-                "tile": f"{os.path.basename(output_folder)}/{filename}",
+                "tile": f"{filename}",
                 "bounds": [[south, west], [north, east]]
             })
     
