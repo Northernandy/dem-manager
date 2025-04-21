@@ -34,6 +34,15 @@ const demLayer = L.layerGroup();
 let isLoadingDEM = false;
 let lastLoadedDemId = null;
 
+// Track WebP availability for the current DEM
+let currentWebPAvailability = {
+    has_high_res_webp: false,
+    has_low_res_webp: false
+};
+
+// Get user preference for WebP resolution (default to high)
+let preferHighResWebP = localStorage.getItem('preferHighResWebP') !== 'false';
+
 // Add Wivenhoe Dam marker
 const wivenhoeDam = L.marker([-27.3919, 152.6085])
     .bindPopup("<b>Wivenhoe Dam</b><br>Major water supply and flood mitigation dam.")
@@ -136,9 +145,8 @@ function searchAddress() {
 
 // Function to load a DEM layer from a GeoTIFF URL
 function loadDEMLayer(url) {
-    // Prevent multiple simultaneous loads
     if (isLoadingDEM) {
-        console.log('DEM already loading, ignoring duplicate request');
+        console.log('Already loading a DEM, please wait');
         return;
     }
     
@@ -153,74 +161,135 @@ function loadDEMLayer(url) {
     // Check if this is a PNG (RGB visualization) or TIF (raw elevation data)
     const isPNG = url.toLowerCase().endsWith('.png');
     
+    // Hide WebP toggle for non-RGB DEMs
+    const toggleContainer = document.getElementById('webp-resolution-toggle-container');
+    if (!isPNG) {
+        console.log('Non-RGB DEM selected, hiding WebP toggle');
+        toggleContainer.style.display = 'none';
+    }
+    
     if (isPNG) {
-        // For PNG files, use a simple ImageOverlay
-        fetch(url)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+        // Extract filename information for WebP checks
+        const urlParts = url.split('/');
+        const filename = urlParts[urlParts.length - 1];
+        const filenameWithoutExt = filename.replace('.png', '');
+        
+        // First, try to get the bounds from the server
+        fetch(`/api/get-dem-bounds/${filenameWithoutExt}`)
+            .then(response => response.json())
+            .then(data => {
+                let bounds;
+                if (data.success && data.bounds) {
+                    bounds = [
+                        [data.bounds.min_lat, data.bounds.min_lon],
+                        [data.bounds.max_lat, data.bounds.max_lon]
+                    ];
+                } else {
+                    // Fallback to Brisbane area if bounds not available
+                    bounds = [[-27.7, 152.5], [-27.2, 153.2]];
                 }
-                return response.blob();
-            })
-            .then(blob => {
-                const imageUrl = URL.createObjectURL(blob);
                 
-                // We need to get the bounds for this PNG
-                // Extract from the URL or filename
-                const urlParts = url.split('/');
-                const filename = urlParts[urlParts.length - 1];
-                const filenameWithoutExt = filename.replace('.png', '');
-                
-                // Try to get the bounds from the server
-                fetch(`/api/get-dem-bounds/${filenameWithoutExt}`)
+                // Get DEM information to check for WebP availability
+                return fetch(`/api/get-dem/${lastLoadedDemId}`)
                     .then(response => response.json())
-                    .then(data => {
-                        let bounds;
-                        if (data.success && data.bounds) {
-                            bounds = [
-                                [data.bounds.min_lat, data.bounds.min_lon],
-                                [data.bounds.max_lat, data.bounds.max_lon]
-                            ];
+                    .then(demData => {
+                        if (!demData.success || !demData.dem) {
+                            throw new Error('Failed to get DEM information');
+                        }
+                        
+                        // Store WebP availability information
+                        currentWebPAvailability = {
+                            has_high_res_webp: demData.dem.has_high_res_webp || false,
+                            has_low_res_webp: demData.dem.has_low_res_webp || false
+                        };
+                        
+                        // Show/hide WebP resolution toggle based on availability and DEM type
+                        const toggleContainer = document.getElementById('webp-resolution-toggle-container');
+                        
+                        // Check if this is an RGB visualization (PNG) or raw elevation data (TIF)
+                        const isRGB = demData.dem.url.toLowerCase().endsWith('.png');
+                        console.log(`DEM type check: URL=${demData.dem.url}, isRGB=${isRGB}`);
+                        
+                        // Only show toggle for RGB visualizations with both WebP resolutions available
+                        if (isRGB && currentWebPAvailability.has_high_res_webp && currentWebPAvailability.has_low_res_webp) {
+                            console.log(`Showing WebP toggle: isRGB=${isRGB}, high_res=${currentWebPAvailability.has_high_res_webp}, low_res=${currentWebPAvailability.has_low_res_webp}`);
+                            toggleContainer.style.display = 'block';
+                            
+                            // Set toggle state based on user preference
+                            const toggle = document.getElementById('toggle-webp-resolution');
+                            toggle.checked = preferHighResWebP;
+                            toggle.nextElementSibling.textContent = preferHighResWebP ? 'High Resolution' : 'Low Resolution';
                         } else {
-                            // Fallback to Brisbane area if bounds not available
-                            bounds = [[-27.7, 152.5], [-27.2, 153.2]];
+                            console.log(`Hiding WebP toggle: isRGB=${isRGB}, high_res=${currentWebPAvailability.has_high_res_webp}, low_res=${currentWebPAvailability.has_low_res_webp}`);
+                            toggleContainer.style.display = 'none';
                         }
                         
-                        // Create an image overlay with the PNG
-                        const imageOverlay = L.imageOverlay(imageUrl, bounds, {
-                            opacity: 0.7
-                        });
+                        // Try to load WebP tiles with the user's preference
+                        console.log(`Attempting to load WebP tiles (prefer high res: ${preferHighResWebP})`);
                         
-                        // Add the layer to the DEM layer group
-                        imageOverlay.addTo(demLayer);
-                        
-                        // Add the DEM layer to the map if not already visible
-                        if (!map.hasLayer(demLayer)) {
-                            map.addLayer(demLayer);
-                            document.getElementById('toggle-dem').checked = true;
+                        // Try to load WebP tiles with the user's preference
+                        return window.WebPHandler.tryLoadWebPWithFallback(lastLoadedDemId, demData.dem, bounds, preferHighResWebP)
+                            .then(result => {
+                                if (result) {
+                                    console.log(`Successfully loaded ${result.quality}-resolution WebP tiles`);
+                                    
+                                    // Add the WebP layer to the DEM layer group
+                                    demLayer.addLayer(result.layer);
+                                    
+                                    // Add the DEM layer to the map if not already visible
+                                    if (!map.hasLayer(demLayer)) {
+                                        map.addLayer(demLayer);
+                                        document.getElementById('toggle-dem').checked = true;
+                                    }
+                                    
+                                    // Update the opacity for all layers in the group
+                                    const currentOpacity = document.getElementById('opacity-slider').value / 100;
+                                    demLayer.eachLayer(function(layer) {
+                                        if (layer.setOpacity) {
+                                            layer.setOpacity(currentOpacity);
+                                        }
+                                    });
+                                    
+                                    // Update info panel
+                                    document.getElementById('info-content').innerHTML = `
+                                        <p><strong>WebP Tiles Loaded</strong></p>
+                                        <p>Type: ${result.quality === 'high' ? 'High Resolution (Lossless)' : 'Low Resolution (Quality 75)'} WebP Tiles</p>
+                                        <p>Use the opacity slider to adjust visibility</p>
+                                    `;
+                                    
+                                    // Fit map to the bounds
+                                    map.fitBounds(bounds);
+                                    
+                                    // Reset loading flag
+                                    isLoadingDEM = false;
+                                    
+                                    // Return true to indicate we've handled the layer
+                                    return true;
+                                }
+                                
+                                // If WebP loading failed, return false to continue with PNG loading
+                                console.log('No WebP tiles available or loading failed, falling back to PNG');
+                                return false;
+                            });
+                    });
+            })
+            .then(webpLoaded => {
+                // If WebP was loaded successfully, we're done
+                if (webpLoaded) return;
+                
+                // Otherwise, fall back to the original PNG loading logic
+                console.log('Falling back to original PNG loading');
+                
+                // For PNG files, use a simple ImageOverlay
+                return fetch(url)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
                         }
-                        
-                        // Update the opacity slider to control this layer
-                        const currentOpacity = document.getElementById('opacity-slider').value / 100;
-                        imageOverlay.setOpacity(currentOpacity);
-                        
-                        // Update info panel
-                        document.getElementById('info-content').innerHTML = `
-                            <p><strong>RGB Visualization Loaded</strong></p>
-                            <p>Type: Visualization Image (PNG)</p>
-                            <p>Use the opacity slider to adjust visibility</p>
-                        `;
-                        
-                        // Fit map to the bounds
-                        map.fitBounds(bounds);
-                        
-                        // Reset loading flag
-                        isLoadingDEM = false;
+                        return response.blob();
                     })
-                    .catch(error => {
-                        console.error('Error getting bounds:', error);
-                        // Fallback to Brisbane area
-                        const bounds = [[-27.7, 152.5], [-27.2, 153.2]];
+                    .then(blob => {
+                        const imageUrl = URL.createObjectURL(blob);
                         
                         // Create an image overlay with the PNG
                         const imageOverlay = L.imageOverlay(imageUrl, bounds, {
@@ -253,16 +322,6 @@ function loadDEMLayer(url) {
                         // Reset loading flag
                         isLoadingDEM = false;
                     });
-            })
-            .catch(error => {
-                console.error('Error loading RGB visualization:', error);
-                document.getElementById('info-content').innerHTML = `
-                    <p><strong>Error:</strong> Failed to load RGB visualization</p>
-                    <p>${error.message}</p>
-                `;
-                
-                // Reset loading flag
-                isLoadingDEM = false;
             });
     } else {
         // For GeoTIFF files, use georaster-layer-for-leaflet as before
@@ -431,6 +490,36 @@ document.getElementById('dem-selector')?.addEventListener('change', function() {
 document.getElementById('update-map').addEventListener('click', function() {
     const selectedDem = document.getElementById('dem-selector').value;
     handleDEMSelection(selectedDem);
+});
+
+// Event listener for WebP resolution toggle
+document.getElementById('toggle-webp-resolution').addEventListener('change', function(e) {
+    // Update preference
+    preferHighResWebP = e.target.checked;
+    
+    // Store preference in localStorage
+    localStorage.setItem('preferHighResWebP', preferHighResWebP);
+    
+    // Update label
+    this.nextElementSibling.textContent = preferHighResWebP ? 'High Resolution' : 'Low Resolution';
+    
+    // Reload current DEM with new resolution preference if we have a DEM loaded
+    if (lastLoadedDemId) {
+        // Clear existing DEM layer to force reload
+        demLayer.clearLayers();
+        
+        // Call handleDEMSelection to reload with new preference
+        handleDEMSelection(lastLoadedDemId);
+    }
+});
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize any tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
 });
 
 // Handle map clicks to show information

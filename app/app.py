@@ -119,7 +119,34 @@ def serve_dem(filename):
     content_type = 'image/tiff'
     if filename.lower().endswith('.png'):
         content_type = 'image/png'
+    elif filename.lower().endswith('.json'):
+        content_type = 'application/json'
+    elif filename.lower().endswith('.webp'):
+        content_type = 'image/webp'
     
+    return send_file(file_path, mimetype=content_type)
+
+@app.route('/dem/<path:subpath>')
+def serve_dem_subpath(subpath):
+    """Serve a file from a subfolder within the DEM directory."""
+    file_path = os.path.join(DEM_DIR, subpath)
+    if not os.path.exists(file_path):
+        logger.warning(f"File not found: {file_path}")
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Determine content type based on file extension
+    content_type = 'application/octet-stream'  # Default content type
+    
+    if file_path.lower().endswith('.png'):
+        content_type = 'image/png'
+    elif file_path.lower().endswith('.tif') or file_path.lower().endswith('.tiff'):
+        content_type = 'image/tiff'
+    elif file_path.lower().endswith('.json'):
+        content_type = 'application/json'
+    elif file_path.lower().endswith('.webp'):
+        content_type = 'image/webp'
+    
+    logger.info(f"Serving file: {file_path} with content type: {content_type}")
     return send_file(file_path, mimetype=content_type)
 
 @app.route('/api/fetch-dem', methods=['POST'])
