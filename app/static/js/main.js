@@ -35,6 +35,9 @@ let isLoadingDEM = false;
 let lastLoadedDemId = null;
 let lastLoadedDemData = null;
 
+// Store a reference to the current georaster for elevation queries
+let currentGeoRaster = null;
+
 // Track WebP availability for the current DEM
 let currentWebPAvailability = {
     has_high_res_webp: false,
@@ -402,17 +405,34 @@ function loadDEMLayer(url) {
             });
     } else {
         // For GeoTIFF files, use georaster-layer-for-leaflet as before
+        console.log('Loading GeoTIFF file:', url);
         fetch(url)
             .then(response => {
+                console.log('GeoTIFF fetch response status:', response.status);
                 if (!response.ok) {
                     throw new Error(`HTTP error! Status: ${response.status}`);
                 }
                 return response.arrayBuffer();
             })
             .then(arrayBuffer => {
+                console.log('GeoTIFF arrayBuffer received, size:', arrayBuffer.byteLength);
+                console.log('Parsing GeoTIFF with parseGeoraster...');
+                
                 parseGeoraster(arrayBuffer).then(georaster => {
+                    console.log('GeoTIFF successfully parsed!');
+                    // Store the georaster reference for elevation queries
+                    currentGeoRaster = georaster;
+                    console.log('currentGeoRaster set to:', currentGeoRaster ? 'georaster object' : 'null');
+                    
                     // Log the georaster object to see all available metadata
                     console.log('GeoRaster metadata:', georaster);
+                    console.log('GeoRaster mins:', georaster.mins);
+                    console.log('GeoRaster maxs:', georaster.maxs);
+                    console.log('GeoRaster noDataValue:', georaster.noDataValue);
+                    console.log('GeoRaster rasterType:', georaster.rasterType);
+                    console.log('GeoRaster projection:', georaster.projection);
+                    console.log('GeoRaster xmin/xmax/ymin/ymax:', 
+                        georaster.xmin, georaster.xmax, georaster.ymin, georaster.ymax);
                     
                     // Create a Leaflet layer with the georaster
                     const demRasterLayer = new GeoRasterLayer({
@@ -421,42 +441,37 @@ function loadDEMLayer(url) {
                         resolution: 256,
                         pixelValuesToColorFn: values => {
                             const value = values[0]; // Get the first band value
-                            if (value === -9999 || value === null || value === undefined) {
+                            
+                            // Debug pixel values
+                            if (Math.random() < 0.0001) { // Log only a small sample of values to avoid console spam
+                                console.log('Pixel value:', value);
+                            }
+                            
+                            // Check for no data values - be more inclusive to catch all possible no data indicators
+                            if (value === null || value === undefined || 
+                                value === georaster.noDataValue || 
+                                value === -9999 || value === -3.4028234663852886e+38) {
                                 return null; // No color for nodata values
                             }
                             
-                            // QGIS-like color ramp for elevation
-                            // Get min and max values from the georaster if available
+                            // Get min and max values from the georaster
+                            // If mins/maxs aren't available, use a reasonable range for elevation in meters
                             const min = georaster.mins ? georaster.mins[0] : 0;
                             const max = georaster.maxs ? georaster.maxs[0] : 1000;
-                            const range = max - min;
                             
-                            // Normalize the value to 0-1 range
-                            const normalized = Math.max(0, Math.min(1, (value - min) / range));
+                            // Use a simpler, more robust approach for coloring
+                            // This ensures we'll see some variation even if the normalization is imperfect
                             
-                            // Apply a color ramp similar to QGIS elevation visualization
-                            // Blue (low) -> Green -> Yellow -> Red -> White (high)
-                            if (normalized < 0.2) {
-                                // Blue to Cyan (0-20%)
-                                const t = normalized / 0.2;
-                                return [0, Math.floor(255 * t), 255, 255];
-                            } else if (normalized < 0.4) {
-                                // Cyan to Green (20-40%)
-                                const t = (normalized - 0.2) / 0.2;
-                                return [0, 255, Math.floor(255 * (1 - t)), 255];
-                            } else if (normalized < 0.6) {
-                                // Green to Yellow (40-60%)
-                                const t = (normalized - 0.4) / 0.2;
-                                return [Math.floor(255 * t), 255, 0, 255];
-                            } else if (normalized < 0.8) {
-                                // Yellow to Red (60-80%)
-                                const t = (normalized - 0.6) / 0.2;
-                                return [255, Math.floor(255 * (1 - t)), 0, 255];
-                            } else {
-                                // Red to White (80-100%)
-                                const t = (normalized - 0.8) / 0.2;
-                                return [255, Math.floor(255 * t), Math.floor(255 * t), 255];
-                            }
+                            // Simple grayscale as a fallback - guarantees we'll see something
+                            // Scale from 0-255 (black to white)
+                            let normalizedValue = (value - min) / (max - min);
+                            normalizedValue = Math.max(0, Math.min(1, normalizedValue)); // Clamp to 0-1
+                            
+                            // Convert to grayscale (0-255)
+                            const intensity = Math.floor(normalizedValue * 255);
+                            
+                            // Return grayscale with full opacity
+                            return [intensity, intensity, intensity, 255];
                         }
                     });
                     
@@ -487,9 +502,21 @@ function loadDEMLayer(url) {
                         [georaster.ymin, georaster.xmin],
                         [georaster.ymax, georaster.xmax]
                     ];
+                    console.log('Fitting map to GeoTIFF bounds:', bounds);
                     map.fitBounds(bounds);
                     
                     // Reset loading flag
+                    isLoadingDEM = false;
+                    
+                    console.log('GeoTIFF loading complete, currentGeoRaster:', 
+                        currentGeoRaster ? 'available' : 'null');
+                }).catch(error => {
+                    console.error('Error parsing GeoTIFF:', error);
+                    currentGeoRaster = null;
+                    document.getElementById('info-content').innerHTML = `
+                        <p><strong>Error:</strong> Failed to parse GeoTIFF</p>
+                        <p>${error.message}</p>
+                    `;
                     isLoadingDEM = false;
                 });
             })
@@ -603,12 +630,83 @@ document.addEventListener('DOMContentLoaded', function() {
 // Handle map clicks to show information
 map.on('click', function(e) {
     const latlng = e.latlng;
+    console.log('Map clicked at:', latlng);
     
-    // This would be replaced with an actual query to get data at the clicked location
-    document.getElementById('info-content').innerHTML = `
+    // Initialize info content with location data
+    let infoContent = `
         <p><strong>Clicked Location:</strong></p>
         <p>Latitude: ${latlng.lat.toFixed(6)}</p>
         <p>Longitude: ${latlng.lng.toFixed(6)}</p>
-        <p>Click on DEM areas for more details.</p>
     `;
+    
+    // Check if we have a georaster to query for elevation
+    console.log('Current georaster available:', currentGeoRaster !== null);
+    if (currentGeoRaster) {
+        console.log('GeoRaster properties:', {
+            width: currentGeoRaster.width,
+            height: currentGeoRaster.height,
+            noDataValue: currentGeoRaster.noDataValue,
+            xmin: currentGeoRaster.xmin,
+            xmax: currentGeoRaster.xmax,
+            ymin: currentGeoRaster.ymin,
+            ymax: currentGeoRaster.ymax
+        });
+        
+        try {
+            // Alternative approach to get elevation value
+            // Convert lat/lng to pixel coordinates
+            const x = Math.round((latlng.lng - currentGeoRaster.xmin) / currentGeoRaster.pixelWidth);
+            const y = Math.round((currentGeoRaster.ymax - latlng.lat) / currentGeoRaster.pixelHeight);
+            
+            console.log('Converted to pixel coordinates:', { x, y });
+            
+            // Check if coordinates are within bounds
+            if (x >= 0 && x < currentGeoRaster.width && y >= 0 && y < currentGeoRaster.height) {
+                // Get value at pixel coordinates
+                const value = currentGeoRaster.values[0][y][x];
+                console.log('Elevation value retrieved from pixel coordinates:', value);
+                
+                // Only display if we have a valid value
+                if (value !== null && value !== undefined && 
+                    value !== currentGeoRaster.noDataValue && 
+                    value !== -9999 && value !== -3.4028234663852886e+38) {
+                    infoContent += `
+                        <p><strong>Elevation:</strong> ${value.toFixed(2)} meters</p>
+                    `;
+                    console.log('Valid elevation value displayed:', value);
+                } else {
+                    infoContent += `
+                        <p><strong>Elevation:</strong> No data available at this point</p>
+                    `;
+                    console.log('Invalid elevation value:', value);
+                }
+            } else {
+                console.log('Coordinates out of bounds:', { x, y, width: currentGeoRaster.width, height: currentGeoRaster.height });
+                infoContent += `
+                    <p><strong>Elevation:</strong> Location outside DEM coverage area</p>
+                `;
+            }
+        } catch (error) {
+            console.error('Error getting elevation value:', error);
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            
+            // Check if the georaster has the expected methods and properties
+            console.log('GeoRaster methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(currentGeoRaster)));
+            
+            infoContent += `
+                <p><strong>Elevation:</strong> Error retrieving data</p>
+                <p><small>Error: ${error.message}</small></p>
+            `;
+        }
+    } else {
+        console.log('No georaster available for elevation query');
+        infoContent += `
+            <p>Click on DEM areas for elevation details.</p>
+        `;
+    }
+    
+    // Update the info panel with the content
+    document.getElementById('info-content').innerHTML = infoContent;
 });
