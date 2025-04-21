@@ -45,6 +45,9 @@ def tile_png_to_webp(image_name, quality, lossless):
     # Create quality suffix for folder and file naming
     quality_suffix = "lossless" if lossless else f"q{quality}"
     
+    # Print debug information
+    print(f"Creating WebP tiles with suffix: {quality_suffix}")
+    
     # Create JSON path in the root geo directory
     json_filename = f"{base_name}_tiles_{quality_suffix}.json"
     json_path = os.path.join(geo_folder, json_filename)

@@ -8,17 +8,6 @@ import json
 import re
 import argparse
 import math
-import sys
-import threading
-
-# Directory constants - use absolute paths for reliability
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BASE_DATA_DIR = os.path.join(BASE_DIR, "data", "geo")
-TILES_DIR = os.path.join(BASE_DATA_DIR, "tiles")
-
-# Ensure necessary directories exist
-os.makedirs(BASE_DATA_DIR, exist_ok=True)
-os.makedirs(TILES_DIR, exist_ok=True)
 
 def setup_config(dataset_choice=None):
     """Configure the WMS endpoints and parameters
@@ -88,7 +77,7 @@ def setup_config(dataset_choice=None):
     common_config = {
         "bbox": brisbane_basin_bbox,
         "max_tile_size": 4096,  # Maximum allowed by the server
-        "image_format": "image/png"  # Always use PNG for RGB visualization
+        "image_format": "image/png"  # Using PNG for better transparency support
     }
     
     # Create a configuration for each active endpoint
@@ -172,12 +161,12 @@ def calculate_tiles(config):
 
 def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
     """Download all tiles for the area"""
-    # Create the tiles directory
-    os.makedirs(TILES_DIR, exist_ok=True)
+    # Create a common tiles directory
+    os.makedirs("tiles", exist_ok=True)
     tile_info = []
     
-    # Always use PNG for RGB files
-    file_ext = ".png"  # RGB files should always be PNG
+    # File extension based on format
+    file_ext = ".tif" if "tiff" in config["image_format"] else ".png"
     
     # Get a short name for the dataset to use in filenames
     short_name = config['wms_name'].replace("DEM_", "").replace("_2024", "").replace("_2025", "")
@@ -201,7 +190,7 @@ def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
             # WMS 1.3.0 with EPSG:4326 uses lat,lon order (y,x)
             bbox_str = f"{min_lat:.6f},{min_lon:.6f},{max_lat:.6f},{max_lon:.6f}"
             
-            filename = os.path.join(TILES_DIR, f"tile_{short_name}_{lat_idx}_{lon_idx}{file_ext}")
+            filename = f"tiles/tile_{short_name}_{lat_idx}_{lon_idx}{file_ext}"
             
             # Prepare WMS request parameters
             params = {
@@ -257,7 +246,7 @@ def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
     print(f"Downloaded {len(tile_info)} valid tiles.")
     return tile_info
 
-def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, config, output_path=None):
+def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, config):
     """Stitch all downloaded tiles into a single image with embedded metadata"""
     if not tile_info:
         print("No valid tiles to stitch.")
@@ -336,14 +325,7 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     if short_name == "SRTM_1Second_Hydro_Enforced":
         short_name = "SRTM_Hydro"
     
-    if output_path:
-        # Use the provided output path
-        png_file = output_path
-        # Ensure the directory for the output path exists
-        os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
-    else:
-        # Ensure the RGB directory exists only if we're using it
-        png_file = os.path.join(BASE_DATA_DIR, f"{short_name}.png")
+    png_file = f"{short_name}.png"
     
     # Save as PNG for web-friendly format with transparency
     pil_img = Image.fromarray(stitched_array)
@@ -351,31 +333,20 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     print(f"Web-friendly PNG saved as {png_file}")
 
     # Write world file for PNG
-    if not output_path:
-        png_world_file = os.path.join(BASE_DATA_DIR, f"{short_name}.pgw")
-    else:
-        png_world_file = output_path.replace('.png', '.pgw')
+    png_world_file = f"{short_name}.pgw"
     
-    try:
-        os.makedirs(os.path.dirname(png_world_file) if os.path.dirname(png_world_file) else '.', exist_ok=True)
-        
-        with open(png_world_file, "w") as wf:
-            wf.write(f"{x_scale}\n")      # pixel size in x
-            wf.write("0.0\n")             # rotation
-            wf.write("0.0\n")             # rotation
-            wf.write(f"{-y_scale}\n")     # pixel size in -y
-            wf.write(f"{bbox['min_lon']}\n")  # x upper left
-            wf.write(f"{bbox['max_lat']}\n")  # y upper left
-        print(f"World file (PGW) saved as {png_world_file}")
-    except Exception as e:
-        print(f"Error creating PGW file: {str(e)}")
+    with open(png_world_file, "w") as wf:
+        wf.write(f"{x_scale}\n")      # pixel size in x
+        wf.write("0.0\n")             # rotation
+        wf.write("0.0\n")             # rotation
+        wf.write(f"{-y_scale}\n")     # pixel size in -y
+        wf.write(f"{bbox['min_lon']}\n")  # x upper left
+        wf.write(f"{bbox['max_lat']}\n")  # y upper left
 
-    # Create a small info file
-    if not output_path:
-        info_file = os.path.join(BASE_DATA_DIR, f"{short_name}_info.json")
-    else:
-        info_file = output_path.replace('.png', '_info.json')
+    print(f"World file saved as {png_world_file}")
     
+    # Create a small info file
+    info_file = f"{short_name}_info.json"
     info = {
         "dataset": dataset_name,
         "description": config.get("wms_description", ""),
@@ -398,65 +369,7 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     
     print(f"Info file saved as {info_file}")
 
-    # Check if the PNG file exceeds 10MB
-    if os.path.exists(png_file):
-        file_size_mb = os.path.getsize(png_file) / (1024 * 1024)  # Convert to MB
-        if file_size_mb > 10:  # 10MB threshold
-            print(f"PNG file size is {file_size_mb:.2f}MB, exceeds 10MB threshold")
-            print(f"Generating WebP tiles in background...")
-            
-            # Start a background thread to generate WebP tiles
-            webp_thread = threading.Thread(
-                target=generate_webp_tiles_background,
-                args=(png_file,),
-                daemon=True  # Make it a daemon thread so it doesn't block program exit
-            )
-            webp_thread.start()
-            print(f"WebP tile generation started in background for {png_file}")
-        else:
-            print(f"PNG file size is {file_size_mb:.2f}MB, does not exceed 10MB threshold")
-            print(f"WebP tiles will not be generated")
-
     return True
-
-def download_and_stitch_tiles(config, output_path=None):
-    """
-    Download and stitch tiles for a DEM visualization.
-    
-    Args:
-        config (dict): Configuration for the WMS request
-        output_path (str, optional): Full path to save the output file
-        
-    Returns:
-        tuple: (success, message)
-    """
-    try:
-        # Set default values if not provided
-        if 'max_tile_size' not in config:
-            config['max_tile_size'] = 4096  # Maximum allowed by the server
-        
-        if 'image_format' not in config:
-            config['image_format'] = 'image/png'  # Always use PNG for RGB visualization
-        
-        # Calculate how to divide the area into tiles
-        lat_tiles, lon_tiles, tile_lat_size, tile_lon_size = calculate_tiles(config)
-        
-        # Download all tiles
-        tile_info = download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size)
-        
-        # Stitch them together with metadata
-        success = stitch_tiles_with_metadata(
-            tile_info, 
-            lat_tiles, 
-            lon_tiles, 
-            config["max_tile_size"], 
-            config,
-            output_path=output_path
-        )
-        
-        return success, "Tiles stitched successfully" if success else "Failed to stitch tiles"
-    except Exception as e:
-        return False, f"Error in download_and_stitch_tiles: {str(e)}"
 
 def process_dataset(config):
     """Process a single dataset from start to finish"""
@@ -481,135 +394,6 @@ def process_dataset(config):
     else:
         print(f"Failed to process {config['wms_name']}.")
         return False
-
-def fetch_rgb_dem(bbox, dem_type, resolution=None, output_file=None):
-    """
-    Fetch an RGB visualization DEM for the specified bounding box and DEM type.
-    
-    Args:
-        bbox (tuple): Bounding box as (minx, miny, maxx, maxy)
-        dem_type (str): Type of DEM to fetch (e.g., 'national_1s', 'lidar_5m')
-        resolution (int, optional): Resolution in pixels
-        output_file (str, optional): Output file name
-        
-    Returns:
-        dict: Result of the operation with success status and file path
-    """
-    try:
-        # Map dem_type to the appropriate WMS URL and configuration
-        dem_configs = {
-            'national_1s': {
-                'url': 'https://services.ga.gov.au/gis/services/DEM_SRTM_1Second_Hydro_Enforced_2024/MapServer/WMSServer',
-                'name': 'DEM_SRTM_1Second_Hydro_Enforced_2024',
-                'description': 'SRTM 1 Second Hydro Enforced DEM'
-            },
-            'lidar_5m': {
-                'url': 'https://services.ga.gov.au/gis/services/DEM_LiDAR_5m_2025/MapServer/WMSServer',
-                'name': 'DEM_LiDAR_5m_2025',
-                'description': 'LiDAR 5m DEM'
-            }
-        }
-        
-        if dem_type not in dem_configs:
-            return {
-                'success': False,
-                'message': f"Unknown DEM type: {dem_type}",
-                'file_path': None
-            }
-        
-        dem_config = dem_configs[dem_type]
-        wms_url = dem_config['url']
-        dataset_name = dem_config['name']
-        
-        # Determine output file path
-        if output_file:
-            file_name = output_file
-        else:
-            # Generate a file name based on the DEM type and bounding box
-            bbox_str = '_'.join([str(coord).replace('.', 'p') for coord in bbox])
-            file_name = f"{dem_type}_{bbox_str}.png"
-        
-        # Save directly to the main data/geo directory instead of a subdirectory
-        output_dir = os.path.join(BASE_DATA_DIR)
-        os.makedirs(output_dir, exist_ok=True)
-        
-        file_path = os.path.join(output_dir, file_name)
-        
-        # Convert bbox from (minx, miny, maxx, maxy) to the format expected by the WMS
-        min_lon, min_lat, max_lon, max_lat = bbox
-        
-        # Configure the WMS request
-        request_config = {
-            'wms_url': wms_url,
-            'wms_name': dataset_name,
-            'wms_description': dem_config['description'],
-            'bbox': {
-                'min_lat': min_lat,
-                'min_lon': min_lon,
-                'max_lat': max_lat,
-                'max_lon': max_lon
-            }
-        }
-        
-        # Add resolution if provided
-        if resolution:
-            request_config['resolution'] = resolution
-        
-        # Fetch and stitch tiles
-        success, message = download_and_stitch_tiles(
-            request_config,
-            output_path=file_path  # Pass the full output path to the function
-        )
-        
-        if not success:
-            return {
-                'success': False,
-                'message': f"Failed to stitch tiles for {dataset_name}: {message}",
-                'file_path': None
-            }
-        
-        return {
-            'success': True,
-            'message': f"Successfully fetched RGB DEM: {message}",
-            'file_path': file_path
-        }
-    
-    except Exception as e:
-        return {
-            'success': False,
-            'message': f"Error fetching RGB DEM visualization: {str(e)}",
-            'file_path': None
-        }
-
-def generate_webp_tiles_background(png_file):
-    """Generate WebP tiles for a PNG file in a background thread"""
-    try:
-        from src.pipeline.dem_generate_webp_tiles import tile_png_to_webp
-        
-        # Extract the image name from the full path
-        image_name = os.path.basename(png_file)
-        
-        print(f"Starting WebP tile generation for {image_name}...")
-
-        # Generate tiles with quality=100, lossless
-        print(f"Job 1: Generating WebP tiles with quality=100, lossless...")
-        tile_png_to_webp(
-            image_name=image_name,
-            quality=100,
-            lossless=True
-        )
-        
-        # Generate tiles with quality=75, non-lossless
-        print(f"Job 2: Generating WebP tiles with quality=75, non-lossless...")
-        tile_png_to_webp(
-            image_name=image_name,
-            quality=75,
-            lossless=False
-        )
-        
-        print(f"WebP tile generation completed for {image_name}")
-    except Exception as e:
-        print(f"Error generating WebP tiles: {str(e)}")
 
 def main():
     """Main function to run the script with command line arguments"""
@@ -638,52 +422,4 @@ def main():
     print("="*40)
 
 if __name__ == "__main__":
-    # Test the fetch_rgb_dem function directly
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        print("Testing fetch_rgb_dem function with small bounding box...")
-        
-        # Define a small bounding box around Brisbane
-        bbox = (152.9, -27.5, 153.0, -27.4)
-        
-        # Test fetching RGB visualization
-        result = fetch_rgb_dem(
-            bbox=bbox,
-            dem_type='national_1s',
-            resolution=500,
-            output_file="test_rgb.png"
-        )
-        
-        print(f"Test result: {result}")
-        
-        if result.get('success', False):
-            print(f"Successfully saved file to: {result.get('file_path')}")
-        else:
-            print(f"Failed to fetch RGB visualization: {result.get('message')}")
-    else:
-        print("Testing fetch_rgb_dem function with default parameters...")
-        
-        # Test with SRTM 1 Second DEM (national_1s)
-        srtm_result = fetch_rgb_dem(
-            bbox=(152.5, -28.4, 153.2, -27.0),
-            dem_type='national_1s',
-            resolution=1000,
-            output_file="national_1s_full.png"
-        )
-        
-        print(f"SRTM result: {srtm_result}")
-        
-        if srtm_result.get('success', False):
-            print(f"Successfully saved SRTM file to: {srtm_result.get('file_path')}")
-        
-        # Test with LiDAR 5m DEM (lidar_5m)
-        lidar_result = fetch_rgb_dem(
-            bbox=(139.6726, -36.9499, 139.6851, -36.9412),
-            dem_type='lidar_5m',
-            resolution=1000,
-            output_file="lidar_5m_full.png"
-        )
-        
-        print(f"LiDAR result: {lidar_result}")
-        
-        if lidar_result.get('success', False):
-            print(f"Successfully saved LiDAR file to: {lidar_result.get('file_path')}")
+    main()

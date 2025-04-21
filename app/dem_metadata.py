@@ -194,8 +194,28 @@ def get_available_dems():
                     'bbox': bbox,
                     'data_type': data_type,
                     'size': f"{file_size_mb:.2f} MB",
-                    'date': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_stats.st_mtime))
+                    'date': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_stats.st_mtime)),
+                    # Default WebP availability flags
+                    'has_high_res_webp': False,
+                    'has_low_res_webp': False
                 }
+                
+                # Check for WebP tile availability only for PNG files (Visualization Images)
+                if data_type == "Visualization Image":
+                    # Extract base name without extension
+                    base_name = os.path.splitext(filename)[0]
+                    
+                    # Check for low-resolution WebP tiles (q75)
+                    low_res_json_path = os.path.join(DEM_DIR, f"{base_name}_tiles_q75.json")
+                    if os.path.exists(low_res_json_path):
+                        dem['has_low_res_webp'] = True
+                        logger.info(f"Found low-resolution WebP tiles for {filename}")
+                    
+                    # Check for high-resolution WebP tiles (lossless)
+                    high_res_json_path = os.path.join(DEM_DIR, f"{base_name}_tiles_lossless.json")
+                    if os.path.exists(high_res_json_path):
+                        dem['has_high_res_webp'] = True
+                        logger.info(f"Found high-resolution WebP tiles for {filename}")
                 
                 dems.append(dem)
             except Exception as e:
