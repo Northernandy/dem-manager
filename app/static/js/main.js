@@ -33,6 +33,7 @@ const demLayer = L.layerGroup();
 // Track if DEM is currently loading to prevent duplicate loads
 let isLoadingDEM = false;
 let lastLoadedDemId = null;
+let lastLoadedDemData = null;
 
 // Track WebP availability for the current DEM
 let currentWebPAvailability = {
@@ -184,9 +185,11 @@ function loadDEMLayer(url) {
                         [data.bounds.min_lat, data.bounds.min_lon],
                         [data.bounds.max_lat, data.bounds.max_lon]
                     ];
+                    console.log(`Got bounds from server: ${JSON.stringify(bounds)}`);
                 } else {
                     // Fallback to Brisbane area if bounds not available
                     bounds = [[-27.7, 152.5], [-27.2, 153.2]];
+                    console.log(`Using fallback bounds: ${JSON.stringify(bounds)}`);
                 }
                 
                 // Get DEM information to check for WebP availability
@@ -227,101 +230,175 @@ function loadDEMLayer(url) {
                         // Try to load WebP tiles with the user's preference
                         console.log(`Attempting to load WebP tiles (prefer high res: ${preferHighResWebP})`);
                         
-                        // Try to load WebP tiles with the user's preference
-                        return window.WebPHandler.tryLoadWebPWithFallback(lastLoadedDemId, demData.dem, bounds, preferHighResWebP)
-                            .then(result => {
-                                if (result) {
-                                    console.log(`Successfully loaded ${result.quality}-resolution WebP tiles`);
-                                    
-                                    // Add the WebP layer to the DEM layer group
-                                    demLayer.addLayer(result.layer);
-                                    
-                                    // Add the DEM layer to the map if not already visible
-                                    if (!map.hasLayer(demLayer)) {
-                                        map.addLayer(demLayer);
-                                        document.getElementById('toggle-dem').checked = true;
+                        // Store the bounds for use in later promise chains
+                        demData.dem.bounds = bounds;
+                        
+                        // Only attempt to load WebP if the DEM has WebP tiles available
+                        if (currentWebPAvailability.has_high_res_webp || currentWebPAvailability.has_low_res_webp) {
+                            return window.WebPHandler.tryLoadWebPWithFallback(lastLoadedDemId, demData.dem, bounds, preferHighResWebP)
+                                .then(result => {
+                                    if (result) {
+                                        console.log(`Successfully loaded ${result.quality}-resolution WebP tiles`);
+                                        
+                                        // Add the WebP layer to the DEM layer group
+                                        demLayer.addLayer(result.layer);
+                                        
+                                        // Add the DEM layer to the map if not already visible
+                                        if (!map.hasLayer(demLayer)) {
+                                            map.addLayer(demLayer);
+                                            document.getElementById('toggle-dem').checked = true;
+                                        }
+                                        
+                                        // Update the opacity for all layers in the group
+                                        const currentOpacity = document.getElementById('opacity-slider').value / 100;
+                                        demLayer.eachLayer(function(layer) {
+                                            if (layer.setOpacity) {
+                                                layer.setOpacity(currentOpacity);
+                                            }
+                                        });
+                                        
+                                        // Update info panel
+                                        document.getElementById('info-content').innerHTML = `
+                                            <p><strong>WebP Tiles Loaded</strong></p>
+                                            <p>Type: ${result.quality === 'high' ? 'High Resolution (Lossless)' : 'Low Resolution (Quality 75)'} WebP Tiles</p>
+                                            <p>Use the opacity slider to adjust visibility</p>
+                                        `;
+                                        
+                                        // Fit map to the bounds
+                                        map.fitBounds(bounds);
+                                        
+                                        // Reset loading flag
+                                        isLoadingDEM = false;
+                                        
+                                        // Return true to indicate we've handled the layer
+                                        return true;
                                     }
                                     
-                                    // Update the opacity for all layers in the group
-                                    const currentOpacity = document.getElementById('opacity-slider').value / 100;
-                                    demLayer.eachLayer(function(layer) {
-                                        if (layer.setOpacity) {
-                                            layer.setOpacity(currentOpacity);
-                                        }
-                                    });
-                                    
-                                    // Update info panel
-                                    document.getElementById('info-content').innerHTML = `
-                                        <p><strong>WebP Tiles Loaded</strong></p>
-                                        <p>Type: ${result.quality === 'high' ? 'High Resolution (Lossless)' : 'Low Resolution (Quality 75)'} WebP Tiles</p>
-                                        <p>Use the opacity slider to adjust visibility</p>
-                                    `;
-                                    
-                                    // Fit map to the bounds
-                                    map.fitBounds(bounds);
-                                    
-                                    // Reset loading flag
-                                    isLoadingDEM = false;
-                                    
-                                    // Return true to indicate we've handled the layer
-                                    return true;
-                                }
-                                
-                                // If WebP loading failed, return false to continue with PNG loading
-                                console.log('No WebP tiles available or loading failed, falling back to PNG');
-                                return false;
-                            });
+                                    // If WebP loading failed, return false to continue with PNG loading
+                                    console.log('No WebP tiles available or loading failed, falling back to PNG');
+                                    return false;
+                                });
+                        } else {
+                            // No WebP tiles available, skip WebP loading and return false to continue with PNG loading
+                            console.log('No WebP tiles available for this DEM, skipping WebP loading');
+                            return Promise.resolve(false);
+                        }
                     });
             })
             .then(webpLoaded => {
+                console.log(`WebP loading result: ${webpLoaded}, type: ${typeof webpLoaded}`);
                 // If WebP was loaded successfully, we're done
-                if (webpLoaded) return;
+                if (webpLoaded === true) {
+                    console.log('WebP loading was successful, skipping PNG fallback');
+                    return Promise.resolve(); // Return a resolved promise to end the chain
+                }
                 
                 // Otherwise, fall back to the original PNG loading logic
                 console.log('Falling back to original PNG loading');
                 
-                // For PNG files, use a simple ImageOverlay
-                return fetch(url)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! Status: ${response.status}`);
+                // Extract filename from URL for bounds lookup
+                const urlParts = url.split('/');
+                const filename = urlParts[urlParts.length - 1];
+                const filenameWithoutExt = filename.replace('.png', '');
+                
+                // Fetch bounds from the server using the PGW file
+                console.log(`Fetching bounds for PNG from server: ${filenameWithoutExt}`);
+                
+                return fetch(`/api/get-dem-bounds/${filenameWithoutExt}`)
+                    .then(response => response.json())
+                    .then(boundsData => {
+                        let bounds;
+                        if (boundsData.success && boundsData.bounds) {
+                            bounds = [
+                                [boundsData.bounds.min_lat, boundsData.bounds.min_lon],
+                                [boundsData.bounds.max_lat, boundsData.bounds.max_lon]
+                            ];
+                            console.log(`Got bounds from server for PNG: ${JSON.stringify(bounds)}`);
+                        } else {
+                            // Fallback to Brisbane area if bounds not available
+                            bounds = [[-27.7, 152.5], [-27.2, 153.2]];
+                            console.log(`Using fallback bounds for PNG: ${JSON.stringify(bounds)}`);
                         }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        const imageUrl = URL.createObjectURL(blob);
                         
-                        // Create an image overlay with the PNG
-                        const imageOverlay = L.imageOverlay(imageUrl, bounds, {
-                            opacity: 0.7
-                        });
-                        
-                        // Add the layer to the DEM layer group
-                        imageOverlay.addTo(demLayer);
-                        
-                        // Add the DEM layer to the map if not already visible
-                        if (!map.hasLayer(demLayer)) {
-                            map.addLayer(demLayer);
-                            document.getElementById('toggle-dem').checked = true;
-                        }
-                        
-                        // Update the opacity slider to control this layer
-                        const currentOpacity = document.getElementById('opacity-slider').value / 100;
-                        imageOverlay.setOpacity(currentOpacity);
-                        
-                        // Update info panel
-                        document.getElementById('info-content').innerHTML = `
-                            <p><strong>RGB Visualization Loaded</strong></p>
-                            <p>Type: Visualization Image (PNG)</p>
-                            <p>Use the opacity slider to adjust visibility</p>
-                        `;
-                        
-                        // Fit map to the bounds
-                        map.fitBounds(bounds);
-                        
-                        // Reset loading flag
-                        isLoadingDEM = false;
+                        // For PNG files, use a simple ImageOverlay
+                        console.log(`Attempting to fetch PNG from URL: ${url}`);
+                        return fetch(url, { cache: 'no-store' }) // Force a fresh fetch, don't use cache
+                            .then(response => {
+                                console.log(`PNG fetch response status: ${response.status}`);
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! Status: ${response.status}`);
+                                }
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                console.log(`Successfully got PNG blob, size: ${blob.size} bytes`);
+                                const imageUrl = URL.createObjectURL(blob);
+                                console.log(`Created object URL for PNG: ${imageUrl}`);
+                                
+                                // Create an image overlay with the PNG
+                                console.log(`Creating image overlay with bounds: ${JSON.stringify(bounds)}`);
+                                const imageOverlay = L.imageOverlay(imageUrl, bounds, {
+                                    opacity: 0.7
+                                });
+                                
+                                console.log(`Adding image overlay to DEM layer group`);
+                                imageOverlay.addTo(demLayer);
+                                
+                                console.log(`Checking if DEM layer is already on map: ${map.hasLayer(demLayer)}`);
+                                if (!map.hasLayer(demLayer)) {
+                                    console.log(`Adding DEM layer to map`);
+                                    map.addLayer(demLayer);
+                                    document.getElementById('toggle-dem').checked = true;
+                                } else {
+                                    console.log(`DEM layer already on map, not adding again`);
+                                }
+                                
+                                // Update the opacity slider to control this layer
+                                const currentOpacity = document.getElementById('opacity-slider').value / 100;
+                                imageOverlay.setOpacity(currentOpacity);
+                                
+                                // Update info panel
+                                document.getElementById('info-content').innerHTML = `
+                                    <p><strong>RGB Visualization Loaded</strong></p>
+                                    <p>Type: Visualization Image (PNG)</p>
+                                    <p>Use the opacity slider to adjust visibility</p>
+                                `;
+                                
+                                // Fit map to the bounds
+                                console.log(`Fitting map to bounds: ${JSON.stringify(bounds)}`);
+                                map.fitBounds(bounds);
+                                
+                                // Reset loading flag
+                                isLoadingDEM = false;
+                                
+                                // Return true to indicate success
+                                return true;
+                            })
+                            .catch(error => {
+                                // Handle errors in PNG loading
+                                console.error(`Error loading PNG: ${error.message}`);
+                                document.getElementById('info-content').innerHTML = `
+                                    <p><strong>Error Loading Visualization</strong></p>
+                                    <p>${error.message}</p>
+                                `;
+                                
+                                // Reset loading flag
+                                isLoadingDEM = false;
+                                
+                                // Return false to indicate failure
+                                return false;
+                            });
                     });
+            })
+            .catch(error => {
+                console.error('Error loading DEM data:', error);
+                document.getElementById('info-content').innerHTML = `
+                    <p><strong>Error:</strong> Failed to load DEM data</p>
+                    <p>${error.message}</p>
+                `;
+                
+                // Reset loading flag
+                isLoadingDEM = false;
             });
     } else {
         // For GeoTIFF files, use georaster-layer-for-leaflet as before
@@ -465,6 +542,7 @@ function handleDEMSelection(demId) {
         .then(response => response.json())
         .then(data => {
             if (data.success && data.dem) {
+                lastLoadedDemData = data;
                 loadDEMLayer(data.dem.url);
                 lastLoadedDemId = demId;
             } else {
