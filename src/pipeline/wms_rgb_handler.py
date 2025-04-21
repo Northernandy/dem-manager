@@ -9,6 +9,7 @@ import re
 import argparse
 import math
 import sys
+import threading
 
 # Directory constants - use absolute paths for reliability
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -397,6 +398,25 @@ def stitch_tiles_with_metadata(tile_info, lat_tiles, lon_tiles, max_tile_size, c
     
     print(f"Info file saved as {info_file}")
 
+    # Check if the PNG file exceeds 10MB
+    if os.path.exists(png_file):
+        file_size_mb = os.path.getsize(png_file) / (1024 * 1024)  # Convert to MB
+        if file_size_mb > 10:  # 10MB threshold
+            print(f"PNG file size is {file_size_mb:.2f}MB, exceeds 10MB threshold")
+            print(f"Generating WebP tiles in background...")
+            
+            # Start a background thread to generate WebP tiles
+            webp_thread = threading.Thread(
+                target=generate_webp_tiles_background,
+                args=(png_file,),
+                daemon=True  # Make it a daemon thread so it doesn't block program exit
+            )
+            webp_thread.start()
+            print(f"WebP tile generation started in background for {png_file}")
+        else:
+            print(f"PNG file size is {file_size_mb:.2f}MB, does not exceed 10MB threshold")
+            print(f"WebP tiles will not be generated")
+
     return True
 
 def download_and_stitch_tiles(config, output_path=None):
@@ -560,6 +580,27 @@ def fetch_rgb_dem(bbox, dem_type, resolution=None, output_file=None):
             'message': f"Error fetching RGB DEM visualization: {str(e)}",
             'file_path': None
         }
+
+def generate_webp_tiles_background(png_file):
+    """Generate WebP tiles for a PNG file in a background thread"""
+    try:
+        from src.pipeline.dem_generate_webp_tiles import tile_png_to_webp
+        
+        # Extract the image name from the full path
+        image_name = os.path.basename(png_file)
+        
+        print(f"Starting WebP tile generation for {image_name}...")
+        
+        # Generate tiles with quality=75, non-lossless
+        tile_png_to_webp(
+            image_name=image_name,
+            quality=75,
+            lossless=False
+        )
+        
+        print(f"WebP tile generation completed for {image_name}")
+    except Exception as e:
+        print(f"Error generating WebP tiles: {str(e)}")
 
 def main():
     """Main function to run the script with command line arguments"""

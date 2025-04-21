@@ -340,13 +340,13 @@ function startStatusPolling(filename) {
                             Logger.info(`DEM download completed at ${completionTime.toISOString()}`);
                         }
                         
-                        // Check if 5 seconds have passed since completion
+                        // Check if 8 seconds have passed since completion
                         const currentTime = new Date();
                         const elapsedSinceCompletion = (currentTime - completionTime) / 1000;
                         
-                        if (elapsedSinceCompletion >= 5) {
+                        if (elapsedSinceCompletion >= 8) {
                             clearInterval(pollInterval);
-                            Logger.info(`Stopped polling after 5 seconds of completion`);
+                            Logger.info(`Stopped polling after 8 seconds of completion`);
                             completeDownload({
                                 success: true,
                                 message: 'DEM download completed successfully',
@@ -360,13 +360,13 @@ function startStatusPolling(filename) {
                             Logger.error(`DEM download failed at ${completionTime.toISOString()}`);
                         }
                         
-                        // Check if 5 seconds have passed since completion
+                        // Check if 8 seconds have passed since completion
                         const currentTime = new Date();
                         const elapsedSinceCompletion = (currentTime - completionTime) / 1000;
                         
-                        if (elapsedSinceCompletion >= 5) {
+                        if (elapsedSinceCompletion >= 8) {
                             clearInterval(pollInterval);
-                            Logger.info(`Stopped polling after 5 seconds of error`);
+                            Logger.info(`Stopped polling after 8 seconds of error`);
                             completeDownload({
                                 success: false,
                                 message: statusData.message || 'An error occurred during DEM download'
