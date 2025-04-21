@@ -771,3 +771,12 @@ document.getElementById('fetch-dem-form').addEventListener('submit', function(e)
     e.preventDefault();
     fetchDEM();
 });
+
+// Initialize popovers
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize all popovers
+    const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    popoverTriggerList.map(function (popoverTriggerEl) {
+        return new bootstrap.Popover(popoverTriggerEl);
+    });
+});

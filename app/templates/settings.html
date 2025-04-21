@@ -129,7 +129,25 @@
                                             <small>Resolution: {{ dem.resolution }}m</small><br>
                                             <small>Coverage: {{ dem.coverage }}</small><br>
                                             <small>Size: {{ dem.size }}</small><br>
-                                            <small>Type: <span class="badge {% if dem.data_type == 'Elevation Data' %}bg-success{% else %}bg-danger{% endif %}">{{ dem.data_type }}</span></small>
+                                            <small>Type: <span class="badge {% if dem.data_type == 'Elevation Data' %}bg-success{% else %}bg-danger{% endif %}">{{ dem.data_type }}</span></small><br>
+                                            {% if dem.data_type == 'Visualization Image' %}
+                                            <small>WebP Formats: 
+                                                <i class="bi bi-info-circle-fill ms-1" style="font-size: 14px; color: #0d6efd; cursor: pointer;"
+                                                   data-bs-toggle="popover" 
+                                                   data-bs-placement="top" 
+                                                   data-bs-html="true"
+                                                   data-bs-trigger="click"
+                                                   title="WebP Tile Configuration" 
+                                                   data-bs-content="WebP tile generation is configured in <code>src/pipeline/wms_rgb_handler.py</code> in the <code>generate_webp_tiles_background</code> function.<br><br><pre class='small'>tile_png_to_webp(
+    image_name=image_name,
+    quality=100,  // For high resolution
+    lossless=true
+)</pre>Change these parameters to modify the WebP tile generation behavior."></i><br>
+                                                {% if dem.has_high_res_webp %}<span class="badge bg-purple me-1">High Resolution</span>{% endif %}
+                                                {% if dem.has_low_res_webp %}<span class="badge bg-info me-1">Low Resolution</span>{% endif %}
+                                                {% if not dem.has_high_res_webp and not dem.has_low_res_webp %}<span class="badge bg-secondary">None</span>{% endif %}
+                                             </small>
+                                            {% endif %}
                                         </p>
                                         <div class="d-flex justify-content-between">
                                             <button class="btn btn-sm btn-outline-danger delete-dem-btn" data-dem-filename="{{ dem.name }}">Delete</button>

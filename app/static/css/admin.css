@@ -17,6 +17,12 @@
     background-color: #f8f9fa;
 }
 
+/* Custom badge colors */
+.bg-purple {
+    background-color: #6f42c1 !important;
+    color: white !important;
+}
+
 /* Tab styling */
 .nav-tabs .nav-link {
     color: #000 !important;
