@@ -36,6 +36,9 @@ data/geo/*.tif.aux.xml
 data/geo/temp_dem_chunks/
 data/geo/*_status.json
 data/geo/metadata/
+data/geo/*_tiles_*/
+data/geo/*_tiles_*.json
+data/geo/tiles/
 data/raw/*
 data/processed/*
 data/test/*
@@ -44,6 +47,10 @@ data/test_geo/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/test/.gitkeep
+
+# Test files
+test_*.py
+tests/
 
 # Flask
 instance/
