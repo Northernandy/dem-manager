@@ -55,6 +55,8 @@ data/geo/
 └── rgb_lidar_5m_152p0_-28p0_153p5_-27p0_tiles_lossless.json  # Metadata for high-resolution tiles (if generated)
 ```
 
+> **Note:** As of version 1.0.11, the folder structure has been simplified. Tiles are now stored directly in a folder with the same name as the JSON file (without the .json extension), rather than in a nested folder structure.
+
 ## Configuration
 
 ### Current Configuration
@@ -155,9 +157,14 @@ The WebP tile availability is displayed in the UI on the Settings page:
 
 1. Each PNG visualization image has a "WebP Formats" section
 2. This section shows badges for available WebP formats:
-   - "High Resolution" (green badge): Lossless WebP tiles are available
+   - "High Resolution" (purple badge): Lossless WebP tiles are available
    - "Low Resolution" (blue badge): Quality 75 WebP tiles are available
    - "None" (gray badge): No WebP tiles are available
+
+3. An information icon (ⓘ) next to "WebP Formats" provides a tooltip with configuration details:
+   - Shows the quality settings for each format
+   - Explains the difference between lossless and lossy compression
+   - Helps users understand the WebP tile generation options
 
 ## Future Enhancements
 

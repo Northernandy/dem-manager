@@ -33,6 +33,9 @@ ENV/
 # Data files
 data/geo/*.tif
 data/geo/*.tif.aux.xml
+data/geo/*.pgw
+data/geo/*.png
+data/geo/*_info.json
 data/geo/temp_dem_chunks/
 data/geo/*_status.json
 data/geo/metadata/
@@ -48,9 +51,12 @@ data/test_geo/*
 !data/processed/.gitkeep
 !data/test/.gitkeep
 
-# Test files
+# Archive and test files
+src/pipeline/archive/
+**/archive/
 test_*.py
 tests/
+test_*.tif
 
 # Flask
 instance/
