@@ -7,6 +7,7 @@ from rasterio.merge import merge
 import sys
 import math
 import time
+from .dem_reprojection import reproject_lidar_5m
 
 # Directory constants - use absolute paths for reliability
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -68,7 +69,8 @@ def fetch_geotiff_dem(bbox, dem_type, resolution=None, output_file=None, use_til
         },
         'lidar_5m': {
             'url': 'https://services.ga.gov.au/gis/services/DEM_LiDAR_5m_2025/MapServer/WCSServer',
-            'crs': 'EPSG:4283',
+            #'crs': 'EPSG:4326',  # This projection is unfortunately not working which means a headache on the UI side. 
+            'crs': 'EPSG:4283',  # Only this projection is working for fetching data 
             'resolution': 5  # 5 meters per pixel (native LiDAR resolution)
         }
     }
@@ -196,6 +198,18 @@ def fetch_geotiff_dem(bbox, dem_type, resolution=None, output_file=None, use_til
         
         print(f"Successfully fetched DEM in {elapsed_time:.2f}s ({file_size_mb:.2f}MB)")
         print(f"Saved to: {file_path}")
+        
+        # Reproject 5m LiDAR data from EPSG:4283 to EPSG:4326 for frontend compatibility
+        if dem_type == 'lidar_5m':
+            print(f"Reprojecting 5m LiDAR data from EPSG:4283 to EPSG:4326 for frontend compatibility...")
+            reprojection_result = reproject_lidar_5m(file_path, in_place=True)
+            
+            if reprojection_result['success']:
+                print(f"Successfully reprojected 5m LiDAR data: {reprojection_result['message']}")
+                # file_path remains the same since we're doing in-place reprojection
+            else:
+                print(f"Warning: Reprojection failed: {reprojection_result['message']}")
+                # Continue with the original file if reprojection fails
         
         # Validate the file
         validate_geotiff(file_path)
@@ -356,6 +370,18 @@ def fetch_geotiff_dem_tiled(bbox, dem_type, target_resolution_m, output_file, ma
         print(f"Total processing time: {elapsed_time:.2f}s")
         print("=======================================")
         
+        # Reproject 5m LiDAR data from EPSG:4283 to EPSG:4326 for frontend compatibility
+        if dem_type == 'lidar_5m':
+            print(f"Reprojecting 5m LiDAR data from EPSG:4283 to EPSG:4326 for frontend compatibility...")
+            reprojection_result = reproject_lidar_5m(output_file, in_place=True)
+            
+            if reprojection_result['success']:
+                print(f"Successfully reprojected 5m LiDAR data: {reprojection_result['message']}")
+                # output_file remains the same since we're doing in-place reprojection
+            else:
+                print(f"Warning: Reprojection failed: {reprojection_result['message']}")
+                # Continue with the original file if reprojection fails
+        
         # Validate the merged file
         validate_geotiff(output_file)
         
@@ -409,7 +435,7 @@ def fetch_tile(bbox, output_file, wcs_url, crs, width, height):
         'BBOX': bbox_str,
         'WIDTH': width,
         'HEIGHT': height,
-        'FORMAT': 'GeoTIFF'
+        'FORMAT': 'GeoTIFF',
     }
     
     print("Sending WCS GetCoverage request for tile...")

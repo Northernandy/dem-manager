@@ -47,6 +47,58 @@ let currentWebPAvailability = {
 // Get user preference for WebP resolution (default to high)
 let preferHighResWebP = localStorage.getItem('preferHighResWebP') !== 'false';
 
+// Track the current color scale for GeoTIFF files
+let currentColorScale = 'grayscale';
+
+// Function to get color scale function based on selected scale
+function getColorScaleFunction(georaster, colorScale) {
+    if (colorScale === 'grayscale') {
+        // For grayscale, return null to use default rendering
+        return null;
+    }
+    
+    // Get min and max values for scaling
+    const min = georaster.mins[0];
+    const max = georaster.maxs[0];
+    const range = max - min;
+    
+    console.log(`Creating color scale "${colorScale}" with range: ${min} to ${max}`);
+    
+    // Log available color scales for debugging
+    console.log('Available chroma.js color scales:', Object.keys(chroma.brewer));
+    
+    // Create a chroma scale with the selected color scheme
+    let scale;
+    try {
+        // Try to use the color scale directly
+        scale = chroma.scale(colorScale);
+        console.log(`Successfully created scale with name: ${colorScale}`);
+    } catch (error) {
+        console.error(`Error creating color scale "${colorScale}":`, error);
+        // Fallback to a known working scale
+        scale = chroma.scale('viridis');
+        console.log('Falling back to viridis scale');
+    }
+    
+    // Return the pixel value to color function
+    return function(pixelValues) {
+        const pixelValue = pixelValues[0]; // Use first band
+        
+        // Handle no data values
+        if (pixelValue === georaster.noDataValue || 
+            pixelValue === null || 
+            pixelValue === undefined) {
+            return null;
+        }
+        
+        // Scale to 0-1 range for chroma
+        const scaledValue = (pixelValue - min) / range;
+        
+        // Get color from chroma scale
+        return scale(scaledValue).hex();
+    };
+}
+
 // Add Wivenhoe Dam marker
 const wivenhoeDam = L.marker([-27.3919, 152.6085])
     .bindPopup("<b>Wivenhoe Dam</b><br>Major water supply and flood mitigation dam.")
@@ -185,6 +237,10 @@ function loadDEMLayer(url) {
         console.log('Non-RGB DEM selected, hiding WebP toggle');
         toggleContainer.style.display = 'none';
     }
+    
+    // Hide color scale selector for non-GeoTIFF files
+    const colorScaleContainer = document.getElementById('color-scale-container');
+    colorScaleContainer.style.display = isPNG ? 'none' : 'block';
     
     if (isPNG) {
         // Extract filename information for WebP checks
@@ -437,15 +493,33 @@ function loadDEMLayer(url) {
                     // Store the georaster reference for elevation queries
                     currentGeoRaster = georaster;
                     
-                    // Create a Leaflet layer with the georaster - using minimal configuration
-                    const demRasterLayer = new GeoRasterLayer({
+                    // Show color scale selector for raw GeoTIFF files
+                    const colorScaleContainer = document.getElementById('color-scale-container');
+                    colorScaleContainer.style.display = 'block';
+                    
+                    // Set the dropdown to the current color scale
+                    document.getElementById('color-scale-selector').value = currentColorScale;
+                    
+                    // Hide WebP toggle for raw files
+                    document.getElementById('webp-resolution-toggle-container').style.display = 'none';
+                    
+                    // Create a Leaflet layer with the georaster - using the selected color scale
+                    const layerOptions = {
                         georaster: georaster,
                         opacity: 0.7,
                         pane: 'overlayPane',
                         zIndex: 650
-                    });
+                    };
+                    
+                    // Add color scale if not grayscale
+                    if (currentColorScale !== 'grayscale') {
+                        layerOptions.pixelValuesToColorFn = getColorScaleFunction(georaster, currentColorScale);
+                    }
+                    
+                    const demRasterLayer = new GeoRasterLayer(layerOptions);
                     
                     // Add the layer to the DEM layer group
+                    demLayer.addTo(map);
                     demRasterLayer.addTo(demLayer);
                     
                     // Add the DEM layer to the map if not already visible
@@ -465,6 +539,7 @@ function loadDEMLayer(url) {
                         <p>Resolution: ${georaster.pixelWidth.toFixed(6)} x ${georaster.pixelHeight.toFixed(6)} degrees</p>
                         <p>Size: ${georaster.width} x ${georaster.height} pixels</p>
                         <p>Use the opacity slider to adjust visibility</p>
+                        <p>Select a color scale from the dropdown to change visualization</p>
                     `;
                     
                     // Fit map to the bounds of the DEM
@@ -705,4 +780,45 @@ map.on('click', function(e) {
     
     // Update the info panel with the content
     document.getElementById('info-content').innerHTML = infoContent;
+});
+
+// Event listener for color scale selector
+document.getElementById('color-scale-selector')?.addEventListener('change', function() {
+    // Store the selected color scale
+    currentColorScale = this.value;
+    console.log(`Color scale changed to: ${currentColorScale}`);
+    
+    // If we have a current DEM loaded and it's a GeoTIFF, reload it with the new color scale
+    if (lastLoadedDemId && currentGeoRaster) {
+        console.log('Reloading DEM with new color scale...');
+        
+        // Properly clear the existing DEM layer
+        demLayer.clearLayers();
+        
+        // Create a new layer with the updated color scale
+        const layerOptions = {
+            georaster: currentGeoRaster,
+            opacity: document.getElementById('opacity-slider').value / 100,
+            pane: 'overlayPane',
+            zIndex: 650
+        };
+        
+        // Add color scale if not grayscale
+        if (currentColorScale !== 'grayscale') {
+            layerOptions.pixelValuesToColorFn = getColorScaleFunction(currentGeoRaster, currentColorScale);
+        }
+        
+        console.log('Creating new layer with options:', layerOptions);
+        
+        // Create and add the new layer
+        const newDemRasterLayer = new GeoRasterLayer(layerOptions);
+        newDemRasterLayer.addTo(demLayer);
+        
+        // Make sure the layer is visible
+        if (!map.hasLayer(demLayer)) {
+            map.addLayer(demLayer);
+        }
+        
+        console.log('DEM reloaded with new color scale');
+    }
 });
