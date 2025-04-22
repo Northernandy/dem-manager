@@ -426,7 +426,9 @@ function loadDEMLayer(url) {
                     // Create a Leaflet layer with the georaster - using minimal configuration
                     const demRasterLayer = new GeoRasterLayer({
                         georaster: georaster,
-                        opacity: 0.7
+                        opacity: 0.7,
+                        pane: 'overlayPane',
+                        zIndex: 650
                     });
                     
                     // Add the layer to the DEM layer group
@@ -579,6 +581,32 @@ document.addEventListener('DOMContentLoaded', function() {
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+});
+
+// Add event listener for baselayerchange to ensure DEM layer stays visible
+map.on('baselayerchange', function(e) {
+    // If we have a DEM layer visible and it contains a GeoTIFF, refresh it
+    if (map.hasLayer(demLayer) && demLayer.getLayers().length > 0 && currentGeoRaster) {
+        // Get the current layer
+        const currentLayer = demLayer.getLayers()[0];
+        
+        // Get the current opacity
+        const currentOpacity = currentLayer.getOpacity ? currentLayer.getOpacity() : 0.7;
+        
+        // Clear and recreate the layer
+        demLayer.clearLayers();
+        
+        // Recreate with the same settings but ensure correct z-index and pane
+        const refreshedLayer = new GeoRasterLayer({
+            georaster: currentGeoRaster,
+            opacity: currentOpacity,
+            pane: 'overlayPane',
+            zIndex: 650
+        });
+        
+        // Add back to the map
+        refreshedLayer.addTo(demLayer);
+    }
 });
 
 // Handle map clicks to show information
