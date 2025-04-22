@@ -659,6 +659,38 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// Function to format bbox inputs to always show 3 decimal places
+function formatBboxInputs() {
+    // Get all bbox input fields
+    const bboxInputs = [
+        document.getElementById('minx'),
+        document.getElementById('miny'),
+        document.getElementById('maxx'),
+        document.getElementById('maxy'),
+        document.getElementById('default-minx'),
+        document.getElementById('default-miny'),
+        document.getElementById('default-maxx'),
+        document.getElementById('default-maxy')
+    ];
+    
+    // For each input, add event listeners to format the value
+    bboxInputs.forEach(input => {
+        if (!input) return; // Skip if input doesn't exist
+        
+        // Format initial value
+        if (input.value) {
+            input.value = parseFloat(input.value).toFixed(3);
+        }
+        
+        // Format on blur (when user leaves the field)
+        input.addEventListener('blur', function() {
+            if (this.value) {
+                this.value = parseFloat(this.value).toFixed(3);
+            }
+        });
+    });
+}
+
 // Function to show alerts with optional timeout
 function showAlert(message, type = 'success', timeout = 5000) {
     const alertContainer = document.getElementById('alert-container');
@@ -720,6 +752,8 @@ document.getElementById('map-settings-form').addEventListener('submit', function
 
 // Load saved map settings on page load
 document.addEventListener('DOMContentLoaded', function() {
+    formatBboxInputs();
+    
     const savedSettings = localStorage.getItem('mapSettings');
     if (savedSettings) {
         const settings = JSON.parse(savedSettings);
