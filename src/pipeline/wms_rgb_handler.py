@@ -229,10 +229,10 @@ def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
                 # Try up to max_retries + 1 times (initial attempt + retries)
                 for attempt in range(max_retries + 1):
                     if attempt > 0:
-                        print(f"  Retry attempt {attempt}/{max_retries} for tile {lat_idx},{lon_idx}...")
+                        print("  Retrying...")
                         time.sleep(retry_delay)
                     
-                    print(f"  Sending WMS GetMap request for tile (attempt {attempt + 1}/{max_retries + 1})...")
+                    print("  Sending WMS GetMap request for tile...")
                     
                     try:
                         response = requests.get(config["wms_url"], params=params)
@@ -274,7 +274,7 @@ def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
                         break
                         
                     except Exception as e:
-                        print(f"  Failed to download tile {lat_idx},{lon_idx} (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                        print(f"  Failed to download tile {lat_idx},{lon_idx}: {e}")
                         if attempt < max_retries:
                             continue
                         raise  # Re-raise the exception on the last attempt

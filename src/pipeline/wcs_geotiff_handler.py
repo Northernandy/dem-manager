@@ -445,10 +445,10 @@ def fetch_tile(bbox, output_file, wcs_url, crs, width, height):
     # Try up to max_retries + 1 times (initial attempt + retries)
     for attempt in range(max_retries + 1):
         if attempt > 0:
-            print(f"Retry attempt {attempt}/{max_retries} for tile...")
+            print("Retrying attempt...")
             time.sleep(retry_delay)
             
-        print(f"Sending WCS GetCoverage request for tile (attempt {attempt + 1}/{max_retries + 1})...")
+        print("Sending WCS GetCoverage request for tile...")
         start_time = time.time()
         
         try:
@@ -471,6 +471,7 @@ def fetch_tile(bbox, output_file, wcs_url, crs, width, height):
                 
                 # If not the last attempt, continue to next retry
                 if attempt < max_retries:
+                    print("Will retry...")
                     continue
                 return False
         
@@ -479,6 +480,7 @@ def fetch_tile(bbox, output_file, wcs_url, crs, width, height):
             
             # If not the last attempt, continue to next retry
             if attempt < max_retries:
+                print("Will retry...")
                 continue
             return False
     
