@@ -422,57 +422,11 @@ function loadDEMLayer(url) {
                     console.log('GeoTIFF successfully parsed!');
                     // Store the georaster reference for elevation queries
                     currentGeoRaster = georaster;
-                    console.log('currentGeoRaster set to:', currentGeoRaster ? 'georaster object' : 'null');
                     
-                    // Log the georaster object to see all available metadata
-                    console.log('GeoRaster metadata:', georaster);
-                    console.log('GeoRaster mins:', georaster.mins);
-                    console.log('GeoRaster maxs:', georaster.maxs);
-                    console.log('GeoRaster noDataValue:', georaster.noDataValue);
-                    console.log('GeoRaster rasterType:', georaster.rasterType);
-                    console.log('GeoRaster projection:', georaster.projection);
-                    console.log('GeoRaster xmin/xmax/ymin/ymax:', 
-                        georaster.xmin, georaster.xmax, georaster.ymin, georaster.ymax);
-                    
-                    // Create a Leaflet layer with the georaster
+                    // Create a Leaflet layer with the georaster - using minimal configuration
                     const demRasterLayer = new GeoRasterLayer({
                         georaster: georaster,
-                        opacity: 0.7,
-                        resolution: 256,
-                        pixelValuesToColorFn: values => {
-                            const value = values[0]; // Get the first band value
-                            
-                            // Debug pixel values
-                            if (Math.random() < 0.0001) { // Log only a small sample of values to avoid console spam
-                                console.log('Pixel value:', value);
-                            }
-                            
-                            // Check for no data values - be more inclusive to catch all possible no data indicators
-                            if (value === null || value === undefined || 
-                                value === georaster.noDataValue || 
-                                value === -9999 || value === -3.4028234663852886e+38) {
-                                return null; // No color for nodata values
-                            }
-                            
-                            // Get min and max values from the georaster
-                            // If mins/maxs aren't available, use a reasonable range for elevation in meters
-                            const min = georaster.mins ? georaster.mins[0] : 0;
-                            const max = georaster.maxs ? georaster.maxs[0] : 1000;
-                            
-                            // Use a simpler, more robust approach for coloring
-                            // This ensures we'll see some variation even if the normalization is imperfect
-                            
-                            // Simple grayscale as a fallback - guarantees we'll see something
-                            // Scale from 0-255 (black to white)
-                            let normalizedValue = (value - min) / (max - min);
-                            normalizedValue = Math.max(0, Math.min(1, normalizedValue)); // Clamp to 0-1
-                            
-                            // Convert to grayscale (0-255)
-                            const intensity = Math.floor(normalizedValue * 255);
-                            
-                            // Return grayscale with full opacity
-                            return [intensity, intensity, intensity, 255];
-                        }
+                        opacity: 0.7
                     });
                     
                     // Add the layer to the DEM layer group
