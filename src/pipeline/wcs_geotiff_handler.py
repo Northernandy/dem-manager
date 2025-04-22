@@ -69,7 +69,7 @@ def fetch_geotiff_dem(bbox, dem_type, resolution=None, output_file=None, use_til
         },
         'lidar_5m': {
             'url': 'https://services.ga.gov.au/gis/services/DEM_LiDAR_5m_2025/MapServer/WCSServer',
-            #'crs': 'EPSG:4326',  # This projection is unfortunately not working which means a headache on the UI side. 
+            #'crs': 'EPSG:4326',  # This projection is unfortunately not working which means a headache on the UI side. We fix it with reprojecting. 
             'crs': 'EPSG:4283',  # Only this projection is working for fetching data 
             'resolution': 5  # 5 meters per pixel (native LiDAR resolution)
         }

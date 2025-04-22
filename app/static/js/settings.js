@@ -659,6 +659,42 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// Handle WebP tile regeneration
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('regenerate-webp-btn')) {
+        const filename = e.target.dataset.demFilename;
+        const btn = e.target;
+        
+        // Disable the button and show loading state
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Regenerating...';
+        
+        // Import the WebP tile generation function from the server
+        fetch(`/api/regenerate-webp/${filename}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Re-enable button
+            btn.disabled = false;
+            btn.textContent = 'Regenerate WebP';
+            
+            if (data.success) {
+                showAlert('WebP tile generation started in the background. The files will be available shortly.', 'success');
+            } else {
+                showAlert('Error: ' + data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            // Re-enable button
+            btn.disabled = false;
+            btn.textContent = 'Regenerate WebP';
+            
+            showAlert('Error: ' + error.message, 'danger');
+        });
+    }
+});
+
 // Function to format bbox inputs to always show 3 decimal places
 function formatBboxInputs() {
     // Get all bbox input fields

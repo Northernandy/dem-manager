@@ -383,5 +383,36 @@ def get_dem_bounds_route(dem_id):
     """Get the bounds for a specific DEM file."""
     return get_dem_bounds(dem_id)
 
+@app.route('/api/regenerate-webp/<filename>', methods=['POST'])
+def regenerate_webp_route(filename):
+    """Regenerate WebP tiles for an RGB visualization file."""
+    try:
+        # Check if the file exists
+        file_path = os.path.join(DEM_DIR, filename)
+        if not os.path.exists(file_path):
+            return jsonify({'success': False, 'message': f'File {filename} not found'})
+        
+        # Import the WebP tile generation function
+        from src.pipeline.wms_rgb_handler import generate_webp_tiles_background
+        
+        # Start WebP generation in a background thread
+        import threading
+        webp_thread = threading.Thread(
+            target=generate_webp_tiles_background,
+            args=(file_path,),
+            daemon=True
+        )
+        webp_thread.start()
+        
+        logger.info(f"Started WebP tile regeneration for {filename}")
+        return jsonify({
+            'success': True, 
+            'message': f'WebP tile generation started for {filename}'
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error regenerating WebP tiles: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
