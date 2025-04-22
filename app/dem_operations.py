@@ -17,6 +17,7 @@ import sys
 from werkzeug.utils import secure_filename
 import gc
 import subprocess
+import shutil  # Add shutil for directory operations
 
 # Initialize the logger
 logger = logging.getLogger(__name__)
@@ -109,6 +110,26 @@ def fetch_dem(bbox, dem_type, data_type, resolution=None, output_file=None):
             'success': False,
             'message': f"Error fetching DEM: {str(e)}"
         }
+
+def delete_directory_recursively(directory_path):
+    """
+    Recursively delete a directory and all its contents.
+    
+    Args:
+        directory_path (str): Path to the directory to delete
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if os.path.exists(directory_path) and os.path.isdir(directory_path):
+            shutil.rmtree(directory_path)
+            logger.info(f"Deleted directory: {directory_path}")
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"Could not delete directory: {directory_path}, error: {str(e)}")
+        return False
 
 def delete_dem(filename):
     """
@@ -204,6 +225,30 @@ def delete_dem(filename):
                     os.remove(metadata_file)
                 except Exception:
                     logger.warning(f"Could not delete metadata file: {metadata_file}")
+            
+            # Delete WebP tile folders and JSON files
+            base_name = os.path.splitext(filename)[0]
+            
+            # Instead of hardcoding specific quality values, scan for all matching WebP folders and JSON files
+            logger.info(f"Scanning for WebP tile folders and JSON files for {base_name}")
+            
+            # Get all files and directories in the DEM_DIR
+            for item in os.listdir(DEM_DIR):
+                item_path = os.path.join(DEM_DIR, item)
+                
+                # Check if the item starts with the base_name and contains "_tiles_"
+                if item.startswith(base_name) and "_tiles_" in item:
+                    if os.path.isdir(item_path):
+                        # This is a WebP tile folder
+                        if delete_directory_recursively(item_path):
+                            logger.info(f"Deleted WebP tiles folder: {item_path}")
+                    elif item.endswith(".json"):
+                        # This is a WebP JSON metadata file
+                        try:
+                            os.remove(item_path)
+                            logger.info(f"Deleted WebP JSON file: {item_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not delete WebP JSON file: {item_path}, error: {str(e)}")
             
             return {'success': True, 'message': f'DEM {filename} deleted successfully'}
         else:
