@@ -154,6 +154,8 @@ tests/
 ## Data Sources
 
 - [Geoscience Australia](https://www.ga.gov.au/) - DEM data via REST services
+  - [Geoscience Australia Services Portal](https://services.ga.gov.au/) - REST API services for geospatial data
+  - [ELVIS - Elevation Information System](https://elevation.fsdf.org.au/) - National elevation data portal
 - [Bureau of Meteorology (BOM)](http://www.bom.gov.au/) - Weather and flood data
 - [SEQ Water](https://www.seqwater.com.au/) - Dam levels and releases
 - [Queensland Spatial Catalogue](https://qldspatial.information.qld.gov.au/) - Additional spatial data
