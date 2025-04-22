@@ -78,13 +78,27 @@ document.getElementById('opacity-slider').addEventListener('input', function(e) 
     const percentage = e.target.value;
     e.target.style.background = `linear-gradient(to right, #3498db 0%, #3498db ${percentage}%, #e0e0e0 ${percentage}%, #e0e0e0 100%)`;
     
+    // Helper function to recursively apply opacity to layers and layer groups
+    function applyOpacityRecursively(layer, opacity) {
+        // If it's a layer group, apply to each child layer
+        if (layer instanceof L.LayerGroup) {
+            layer.eachLayer(function(childLayer) {
+                applyOpacityRecursively(childLayer, opacity);
+            });
+        } 
+        // If layer has setOpacity method, use it
+        else if (layer.setOpacity) {
+            layer.setOpacity(opacity);
+        } 
+        // For vector layers that use setStyle
+        else if (layer.setStyle) {
+            layer.setStyle({ fillOpacity: opacity });
+        }
+    }
+    
     // Update opacity for DEM layer
     demLayer.eachLayer(function(layer) {
-        if (layer.setOpacity) {
-            layer.setOpacity(opacityValue);
-        } else if (layer.setStyle) {
-            layer.setStyle({ fillOpacity: opacityValue });
-        }
+        applyOpacityRecursively(layer, opacityValue);
     });
 });
 
