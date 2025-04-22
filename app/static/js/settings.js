@@ -565,6 +565,23 @@ function attachDemButtonEventListeners() {
             });
         });
     });
+    
+    // Attach event listeners to "View on Map" buttons
+    document.querySelectorAll('.view-dem-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const demId = this.dataset.demId;
+            
+            // Log the action
+            Logger.info(`Viewing DEM on map: ${demId}`);
+            
+            // Store the selected DEM ID in localStorage so the main page knows which DEM to load
+            localStorage.setItem('selectedDemId', demId);
+            
+            // Navigate to the main page
+            window.location.href = '/';
+        });
+    });
 }
 
 // Initial attachment of event listeners

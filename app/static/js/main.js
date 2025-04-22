@@ -670,6 +670,24 @@ document.addEventListener('DOMContentLoaded', function() {
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+    
+    // Check if there's a selected DEM ID in localStorage (from settings page)
+    const selectedDemId = localStorage.getItem('selectedDemId');
+    if (selectedDemId) {
+        console.log('Found selected DEM ID in localStorage:', selectedDemId);
+        
+        // Clear the selectedDemId from localStorage to prevent it from loading again on refresh
+        localStorage.removeItem('selectedDemId');
+        
+        // Set the DEM selector to the selected DEM if it exists
+        const demSelector = document.getElementById('dem-selector');
+        if (demSelector) {
+            demSelector.value = selectedDemId;
+        }
+        
+        // Load the selected DEM
+        handleDEMSelection(selectedDemId);
+    }
 });
 
 // Add event listener for baselayerchange to ensure DEM layer stays visible
