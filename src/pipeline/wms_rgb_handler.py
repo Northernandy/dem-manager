@@ -10,6 +10,7 @@ import argparse
 import math
 import sys
 import threading
+import time
 
 # Directory constants - use absolute paths for reliability
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -220,39 +221,66 @@ def download_tiles(config, lat_tiles, lon_tiles, tile_lat_size, tile_lon_size):
             
             try:
                 print(f"  Tile {lat_idx},{lon_idx} with bbox {bbox_str}")
-                response = requests.get(config["wms_url"], params=params)
-                response.raise_for_status()
                 
-                # Check for XML error response
-                if 'xml' in response.headers.get('Content-Type', '').lower() or response.content[:5] == b'<?xml':
-                    print(f"  Server returned an XML error response for tile {lat_idx},{lon_idx}:")
-                    print(response.text)
-                    continue
+                # Hardcoded retry parameters
+                max_retries = 3
+                retry_delay = 2
                 
-                # Validate image content
-                if "image" not in response.headers.get('Content-Type', '').lower():
-                    print(f"  Unexpected content type: {response.headers.get('Content-Type', '')}")
-                    continue
-                
-                # Save the tile
-                with open(filename, 'wb') as f:
-                    f.write(response.content)
-                
-                print(f"  Saved {filename}")
-                tile_info.append({
-                    "filename": filename,
-                    "lat_idx": lat_idx,
-                    "lon_idx": lon_idx,
-                    "bbox": {
-                        "min_lat": min_lat,
-                        "min_lon": min_lon,
-                        "max_lat": max_lat,
-                        "max_lon": max_lon
-                    }
-                })
+                # Try up to max_retries + 1 times (initial attempt + retries)
+                for attempt in range(max_retries + 1):
+                    if attempt > 0:
+                        print(f"  Retry attempt {attempt}/{max_retries} for tile {lat_idx},{lon_idx}...")
+                        time.sleep(retry_delay)
+                    
+                    print(f"  Sending WMS GetMap request for tile (attempt {attempt + 1}/{max_retries + 1})...")
+                    
+                    try:
+                        response = requests.get(config["wms_url"], params=params)
+                        response.raise_for_status()
+                        
+                        # Check for XML error response
+                        if 'xml' in response.headers.get('Content-Type', '').lower() or response.content[:5] == b'<?xml':
+                            print(f"  Server returned an XML error response for tile {lat_idx},{lon_idx}:")
+                            print(response.text)
+                            if attempt < max_retries:
+                                continue
+                            break
+                        
+                        # Validate image content
+                        if "image" not in response.headers.get('Content-Type', '').lower():
+                            print(f"  Unexpected content type: {response.headers.get('Content-Type', '')}")
+                            if attempt < max_retries:
+                                continue
+                            break
+                        
+                        # Save the tile
+                        with open(filename, 'wb') as f:
+                            f.write(response.content)
+                        
+                        print(f"  Saved {filename}")
+                        tile_info.append({
+                            "filename": filename,
+                            "lat_idx": lat_idx,
+                            "lon_idx": lon_idx,
+                            "bbox": {
+                                "min_lat": min_lat,
+                                "min_lon": min_lon,
+                                "max_lat": max_lat,
+                                "max_lon": max_lon
+                            }
+                        })
+                        
+                        # Successfully saved the tile, break out of retry loop
+                        break
+                        
+                    except Exception as e:
+                        print(f"  Failed to download tile {lat_idx},{lon_idx} (attempt {attempt + 1}/{max_retries + 1}): {e}")
+                        if attempt < max_retries:
+                            continue
+                        raise  # Re-raise the exception on the last attempt
                 
             except Exception as e:
-                print(f"  Failed to download tile {lat_idx},{lon_idx}: {e}")
+                print(f"  Failed to download tile {lat_idx},{lon_idx} after all retry attempts: {e}")
     
     print(f"Downloaded {len(tile_info)} valid tiles.")
     return tile_info

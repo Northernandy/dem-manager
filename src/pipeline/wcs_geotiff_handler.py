@@ -438,31 +438,52 @@ def fetch_tile(bbox, output_file, wcs_url, crs, width, height):
         'FORMAT': 'GeoTIFF',
     }
     
-    print("Sending WCS GetCoverage request for tile...")
-    start_time = time.time()
+    # Hardcoded retry parameters
+    max_retries = 3
+    retry_delay = 2
     
-    try:
-        response = requests.get(wcs_url, params=params, stream=True)
+    # Try up to max_retries + 1 times (initial attempt + retries)
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            print(f"Retry attempt {attempt}/{max_retries} for tile...")
+            time.sleep(retry_delay)
+            
+        print(f"Sending WCS GetCoverage request for tile (attempt {attempt + 1}/{max_retries + 1})...")
+        start_time = time.time()
         
-        if response.status_code == 200:
-            # Save the response content to a file
-            with open(output_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        try:
+            response = requests.get(wcs_url, params=params, stream=True)
             
-            elapsed_time = time.time() - start_time
-            file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
+            if response.status_code == 200:
+                # Save the response content to a file
+                with open(output_file, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                elapsed_time = time.time() - start_time
+                file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
+                
+                print(f"Successfully fetched tile in {elapsed_time:.2f}s ({file_size_mb:.2f}MB)")
+                return True
+            else:
+                print(f"Failed to fetch tile. Status code: {response.status_code}")
+                print(f"Response: {response.text[:500]}")
+                
+                # If not the last attempt, continue to next retry
+                if attempt < max_retries:
+                    continue
+                return False
+        
+        except Exception as e:
+            print(f"Error fetching tile: {e}")
             
-            print(f"Successfully fetched tile in {elapsed_time:.2f}s ({file_size_mb:.2f}MB)")
-            return True
-        else:
-            print(f"Failed to fetch tile. Status code: {response.status_code}")
-            print(f"Response: {response.text[:500]}")
+            # If not the last attempt, continue to next retry
+            if attempt < max_retries:
+                continue
             return False
     
-    except Exception as e:
-        print(f"Error fetching tile: {e}")
-        return False
+    # If we get here, all retries have failed
+    return False
 
 if __name__ == "__main__":
     # Test the fetch_geotiff_dem function directly
