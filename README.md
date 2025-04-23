@@ -34,7 +34,7 @@ This project aims to provide an interactive visualization of flood data for Bris
 ## Project Structure
 
 ```
-brisbane-flood-viz/
+dem-manager/
 ├── app/                     # Flask backend
 │   ├── static/              # Static web assets
 │   │   ├── css/             # Stylesheet files
@@ -113,7 +113,7 @@ brisbane-flood-viz/
 
 ```
 # Navigate to the project directory
-cd brisbane-flood-viz
+cd dem-manager
 
 # Activate the virtual environment (if not already activated)
 .venv\Scripts\activate  # Windows
