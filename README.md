@@ -6,7 +6,7 @@ A web-based visualization tool for Brisbane flood data, enabling analysis, forec
 
 This project aims to provide an interactive visualization of flood data for Brisbane, Australia. It combines historical data from the Bureau of Meteorology (BOM) and SEQ Water with digital elevation models (DEMs) to create accurate flood visualizations.
 
-### Current Achievements (as of v1.3.4)
+### Current Achievements (as of v1.3.5)
 
 - Implemented a robust DEM fetching system with support for both GeoTIFF and RGB visualization formats
 - Created a tile-based WebP generation system for optimized map rendering
@@ -37,41 +37,54 @@ This project aims to provide an interactive visualization of flood data for Bris
 brisbane-flood-viz/
 ├── app/                     # Flask backend
 │   ├── static/              # JS, CSS, Leaflet plugins
-│   ├── templates/           # HTML (Jinja2)
-│   └── app.py               # Flask entrypoint
+│   │   ├── css/             # Stylesheet files
+│   │   ├── js/              # JavaScript files
+│   │   ├── images/          # UI images and icons
+│   │   └── lib/             # Third-party libraries
+│   ├── templates/           # HTML (Jinja2) templates
+│   ├── app.py               # Flask application entry point
+│   ├── dem_metadata.py      # DEM metadata handling
+│   └── dem_operations.py    # DEM file operations
 ├── data/                    # All data files
-│   ├── raw/                 # Original CSVs, raster downloads
-│   ├── processed/           # Cleaned data, Parquet files
-│   └── geo/                 # DEMs, shapefiles, overlays
-│       └── metadata/        # Metadata for DEM files
+│   ├── raw/                 # Original data files
+│   ├── processed/           # Processed data files
+│   └── geo/                 # DEM files and visualizations
+│       ├── *.png            # RGB visualization files
+│       ├── *.tif            # GeoTIFF elevation files
+│       ├── *_info.json      # Metadata for DEM files
+│       └── *_tiles_*/       # WebP tile directories
+├── docs/                    # Documentation
+│   └── dem_fetching_system.md  # DEM fetching system documentation
 ├── logs/                    # Application logs
-│   └── app.log              # Main log file
-├── notebooks/               # Data exploration and modeling (Jupyter)
-├── src/                     # Reusable logic modules
-│   ├── pipeline/            # ETL scripts for BOM, SEQ Water, DEM fetching
-│   │   └── dem_fetcher.py   # DEM download and processing from Geoscience Australia
-│   ├── modeling/            # ML or rule-based forecasting
-│   └── raster/              # DEM processing and flood simulation
+├── notebooks/               # Jupyter notebooks for exploration
+├── src/                     # Core application logic
+│   ├── pipeline/            # Data processing pipeline
+│   │   ├── dem_fetcher.py   # DEM fetching coordination
+│   │   ├── wcs_geotiff_handler.py  # GeoTIFF data handler
+│   │   ├── wms_rgb_handler.py      # RGB visualization handler
+│   │   └── dem_generate_webp_tiles.py  # WebP tile generation
+│   ├── modeling/            # Data modeling components
+│   └── raster/              # Raster data processing
 ├── archive/                 # Archived files and backups
 ├── requirements.txt         # Python dependencies
-└── README.md
+└── version.txt              # Current version number
 ```
 
 ## Installation
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/brisbane-flood-viz.git
-   cd brisbane-flood-viz
+   git clone https://github.com/Northernandy/dem-manager.git
+   cd dem-manager
    ```
 
 2. Create and activate a virtual environment:
    ```
-   python -m venv venv
+   python -m venv .venv
    # On Windows
-   venv\Scripts\activate
+   .venv\Scripts\activate
    # On macOS/Linux
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
 
 3. Install dependencies:
@@ -79,11 +92,27 @@ brisbane-flood-viz/
    pip install -r requirements.txt
    ```
 
+4. Create necessary directories:
+   ```
+   # On Windows
+   mkdir -p data\geo data\raw data\processed logs
+   # On macOS/Linux
+   mkdir -p data/geo data/raw data/processed logs
+   ```
+
 ## Usage
 
 ### Running the Flask Application
 
 ```
+# Navigate to the project directory
+cd brisbane-flood-viz
+
+# Activate the virtual environment (if not already activated)
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # macOS/Linux
+
+# Run the Flask application
 python app/app.py
 ```
 
