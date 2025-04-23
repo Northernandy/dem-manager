@@ -53,7 +53,6 @@ brisbane-flood-viz/
 │   ├── modeling/            # ML or rule-based forecasting
 │   └── raster/              # DEM processing and flood simulation
 ├── archive/                 # Archived files and backups
-│   └── testing_backup/      # Backup of testing structure for future reference
 ├── requirements.txt         # Python dependencies
 └── README.md
 ```
