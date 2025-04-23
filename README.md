@@ -36,27 +36,34 @@ This project aims to provide an interactive visualization of flood data for Bris
 ```
 brisbane-flood-viz/
 ├── app/                     # Flask backend
-│   ├── static/              # JS, CSS, Leaflet plugins
+│   ├── static/              # Static web assets
 │   │   ├── css/             # Stylesheet files
+│   │   │   ├── admin.css    # Admin interface styles
+│   │   │   └── style.css    # Main application styles
 │   │   ├── js/              # JavaScript files
-│   │   ├── images/          # UI images and icons
-│   │   └── lib/             # Third-party libraries
-│   ├── templates/           # HTML (Jinja2) templates
+│   │   │   ├── main.js      # Main application logic
+│   │   │   └── settings.js  # Settings page functionality
+│   │   └── dem/             # Sample DEM files
+│   ├── templates/           # HTML templates
+│   │   ├── admin_base.html  # Admin layout template
+│   │   ├── index.html       # Main map page
+│   │   ├── logs.html        # Log viewer
+│   │   └── settings.html    # DEM management page
 │   ├── app.py               # Flask application entry point
 │   ├── dem_metadata.py      # DEM metadata handling
 │   └── dem_operations.py    # DEM file operations
-├── data/                    # All data files
-│   ├── raw/                 # Original data files
-│   ├── processed/           # Processed data files
-│   └── geo/                 # DEM files and visualizations
-│       ├── *.png            # RGB visualization files
-│       ├── *.tif            # GeoTIFF elevation files
-│       ├── *_info.json      # Metadata for DEM files
-│       └── *_tiles_*/       # WebP tile directories
+├── data/                    # Data storage
+│   ├── geo/                 # DEM files and visualizations
+│   │   ├── metadata/        # DEM metadata
+│   │   ├── tiles/           # Tile storage
+│   │   └── *_tiles_*/       # WebP tile directories
+│   ├── raw/                 # Raw data storage
+│   ├── processed/           # Processed data
+│   └── test/                # Test data
 ├── docs/                    # Documentation
 │   └── dem_fetching_system.md  # DEM fetching system documentation
 ├── logs/                    # Application logs
-├── notebooks/               # Jupyter notebooks for exploration
+├── notebooks/               # Jupyter notebooks
 ├── src/                     # Core application logic
 │   ├── pipeline/            # Data processing pipeline
 │   │   ├── dem_fetcher.py   # DEM fetching coordination
@@ -92,7 +99,7 @@ brisbane-flood-viz/
    pip install -r requirements.txt
    ```
 
-4. Create necessary directories:
+4. Create necessary directories (if they don't exist):
    ```
    # On Windows
    mkdir -p data\geo data\raw data\processed logs
