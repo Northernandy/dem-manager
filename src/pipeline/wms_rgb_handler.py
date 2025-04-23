@@ -617,6 +617,9 @@ def generate_webp_tiles_background(png_file):
         # Extract the image name from the full path
         image_name = os.path.basename(png_file)
         
+        # Get the directory containing the PNG file to use as geo_folder
+        geo_folder = os.path.dirname(png_file)
+        
         print(f"Starting WebP tile generation for {image_name}...")
 
         # Generate tiles with quality=100, lossless
@@ -624,7 +627,8 @@ def generate_webp_tiles_background(png_file):
         tile_png_to_webp(
             image_name=image_name,
             quality=100,
-            lossless=True
+            lossless=True,
+            geo_folder=geo_folder
         )
         
         # Generate tiles with quality=75, non-lossless
@@ -632,7 +636,8 @@ def generate_webp_tiles_background(png_file):
         tile_png_to_webp(
             image_name=image_name,
             quality=75,
-            lossless=False
+            lossless=False,
+            geo_folder=geo_folder
         )
         
         print(f"WebP tile generation completed for {image_name}")

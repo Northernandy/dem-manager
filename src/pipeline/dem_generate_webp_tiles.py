@@ -25,14 +25,16 @@ def read_pgw(pgw_name):
         print(f"Error reading PGW file: {e}")
         return None
 
-def tile_png_to_webp(image_name, quality, lossless):
+def tile_png_to_webp(image_name, quality, lossless, geo_folder=None):
     print(f"Processing image: {image_name} with quality: {quality}, lossless: {lossless}")
     # Hard-coded tile size
     tile_size = 2048
     
     # Create base paths and folders
-    geo_folder = "data/geo"
-    print(f"Ensuring geo folder exists: {geo_folder}")
+    if geo_folder is None:
+        geo_folder = "data/geo"
+    
+    print(f"Using geo folder: {geo_folder}")
     try:
         os.makedirs(geo_folder, exist_ok=True)
     except Exception as e:
