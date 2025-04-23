@@ -4,7 +4,17 @@ A web-based visualization tool for Brisbane flood data, enabling analysis, forec
 
 ## Project Overview
 
-This project aims to provide an interactive visualization of flood data for Brisbane, Australia. It combines historical data from the Bureau of Meteorology (BOM) and SEQ Water with digital elevation models (DEMs) to create accurate flood visualizations and potentially predictive models.
+This project aims to provide an interactive visualization of flood data for Brisbane, Australia. It combines historical data from the Bureau of Meteorology (BOM) and SEQ Water with digital elevation models (DEMs) to create accurate flood visualizations.
+
+### Current Achievements (as of v1.3.4)
+
+- Implemented a robust DEM fetching system with support for both GeoTIFF and RGB visualization formats
+- Created a tile-based WebP generation system for optimized map rendering
+- Developed a user-friendly interface for DEM management and visualization
+- Implemented proper file organization with clear separation between raw data and visualizations
+- Fixed critical rendering issues for both raw DEM data and WebP tiles
+- Added support for different quality levels of WebP tiles (lossless and lossy compression)
+- Successfully integrated the DEM visualization with different base map layers
 
 ## Features
 
@@ -18,10 +28,7 @@ This project aims to provide an interactive visualization of flood data for Bris
 - Address search functionality using Nominatim API
 - DEM management interface for fetching, viewing, and deleting elevation data
 - REST API endpoints for DEM operations
-- Historical flood data analysis
-- Water depth and flow velocity visualization
-- Integration with elevation data for accurate flood modeling
-- Data pipeline for automated updates from official sources
+- WebP tile generation for optimized map rendering
 - Comprehensive logging and error handling
 
 ## Project Structure
@@ -44,10 +51,9 @@ brisbane-flood-viz/
 │   ├── pipeline/            # ETL scripts for BOM, SEQ Water, DEM fetching
 │   │   └── dem_fetcher.py   # DEM download and processing from Geoscience Australia
 │   ├── modeling/            # ML or rule-based forecasting
-│   ├── raster/              # DEM processing and flood simulation
-│   └── tests/               # Automated tests
-│       └── test_dem_fetcher.py  # Tests for DEM fetching functionality
-├── tests/                   # Unit tests
+│   └── raster/              # DEM processing and flood simulation
+├── archive/                 # Archived files and backups
+│   └── testing_backup/      # Backup of testing structure for future reference
 ├── requirements.txt         # Python dependencies
 └── README.md
 ```
@@ -86,56 +92,11 @@ The application will be available at `http://localhost:5000`.
 
 ### Logging
 
-The application maintains comprehensive logs in the `logs/app.log` file. These logs include:
+The application maintains logs in the `logs/app.log` file. These logs include:
 - DEM fetching operations and status
 - API requests and responses
 - Error messages and exceptions
 - Application startup and shutdown events
-
-You can view the logs directly or through the application's log viewer interface.
-
-### Running Tests
-
-The project includes a comprehensive test suite built with pytest. To run the tests:
-
-```bash
-# Install pytest if you don't have it
-pip install pytest
-
-# Run all tests
-pytest
-
-# Run tests with verbose output
-pytest -v
-
-# Run specific test categories
-pytest -m dem  # DEM-related tests
-pytest -m app  # Flask app tests
-pytest -m data  # Data fetching tests
-
-# Run tests in a specific file
-pytest tests/pipeline/test_dem_fetcher.py
-
-# Run tests with coverage report
-pytest --cov=app --cov=src
-```
-
-The test suite includes:
-- Unit tests for the DEM fetcher
-- API endpoint tests for the Flask application
-- Data fetching tests
-
-#### Test Structure
-```
-tests/
-├── conftest.py          # Shared test fixtures and configuration
-├── app/                 # Tests for Flask application
-│   └── test_routes.py   # Tests for API endpoints
-├── pipeline/            # Tests for data pipeline modules
-│   ├── test_dem_fetcher.py  # Tests for DEM fetching
-│   └── test_data_fetcher.py  # Tests for other data sources
-└── fixtures/            # Test data fixtures
-```
 
 ### DEM Management
 
@@ -143,6 +104,7 @@ tests/
 2. **Viewing DEMs**: Available DEMs are displayed as cards with metadata
 3. **Using DEMs**: Select a DEM from the dropdown on the main map page
 4. **Deleting DEMs**: Remove unwanted DEMs using the delete button
+5. **WebP Tiles**: The system automatically generates WebP tiles for optimized rendering
 
 ### Map Controls
 
@@ -150,6 +112,7 @@ tests/
 - **Layer Toggle**: Enable/disable the DEM layer
 - **Opacity Control**: Adjust the transparency of the DEM layer
 - **Address Search**: Find locations within Brisbane and surrounding areas
+- **Base Layer Selection**: Switch between Street and Topographic views
 
 ## Data Sources
 
@@ -160,9 +123,9 @@ tests/
 - [SEQ Water](https://www.seqwater.com.au/) - Dam levels and releases
 - [Queensland Spatial Catalogue](https://qldspatial.information.qld.gov.au/) - Additional spatial data
 
-## Deployment
+## Development Approach
 
-This application can be deployed to Railway or Render for production use.
+This project follows an incremental, careful development approach where stability and reliability are prioritized. Changes are made in small, tested increments to ensure functionality is preserved while new features are added.
 
 ## Contributing
 
