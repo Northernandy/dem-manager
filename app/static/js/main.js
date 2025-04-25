@@ -9,10 +9,21 @@ const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
     maxZoom: 19
 });
 
-// Topographic layer from OpenTopoMap
-const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
-    maxZoom: 17
+// Topographic layer from Esri World Topo Map
+const topoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    maxZoom: 19
+});
+
+// Add error handling for the topographic layer
+topoLayer.on('tileerror', function(error, tile) {
+    console.error('Error loading topographic tile:', error);
+    console.log('Tile URL that failed:', tile.src);
+});
+
+// Add loading event for debugging
+topoLayer.on('tileload', function(event) {
+    console.log('Topographic tile loaded successfully');
 });
 
 // Add the default OSM layer to the map
